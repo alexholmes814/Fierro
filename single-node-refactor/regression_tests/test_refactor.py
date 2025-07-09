@@ -7,7 +7,7 @@ import math
 import glob
 
 # Builds being tested
-builds = ["openmp"]
+builds = ["serial"]
 
 # Name(s) of the solver being used
 solvers = ["Fierro"]

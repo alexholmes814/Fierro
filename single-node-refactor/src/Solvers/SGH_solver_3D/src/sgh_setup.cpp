@@ -110,5 +110,37 @@ void SGH3D::setup(SimulationParameters_t& SimulationParamaters,
                    State.node.mass,
                    State.corner.mass);
 
+    // this will be a function inside of the fracture code and will have to be called in the SGH setup function
+    // fills out UPs
+    // UPs are Unique Pairs = unique node pairs with cohesive zone between them
+    // this function finds all of the boundary nodes
+
+    // loops again to count how many overlaps
+    size_t num_vczs = 0;
+    // if (overlap) -> num_vczs += 1;
+
+    CArrayKokkos <size_t> vcz_pairs(num_vczs,2);
+
+    bool overlap = true;
+    size_t count = 0;
+    for (int i = 0; i < mesh.num_bdy_nodes; i++) {
+        for (int j = 0; j < mesh.num_bdy_nodes; j++) {
+            if (i != j) {
+                for (int k = 0; k < 3; k++) {
+                    if (State.nodes.coords(mesh.bdy_nodes(i),k) != State.nodes.coords(mesh.bdy_nodes(j),k)) {
+                    overlap = false;
+                }
+            }
+
+            if (overlap) {
+                // store mesh.bdy_nodes(i) and mesh.bdy_nodes(j) into vcz_pairs
+                vcz_pairs(count,0) = mesh.bdy_nodes(i);
+                vcz_pairs(count,1) = mesh.bdy_nodes(j);
+                count += 1;
+            }
+        }
+    }
+} 
     
+
 } // end SGH setup
