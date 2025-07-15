@@ -37,6 +37,8 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "solver.h"
 #include "state.h"
+#include "mesh.h"
+#include "fracture.h"
 
 // Forward declare structs
 struct SimulationParameters_t;
@@ -140,6 +142,10 @@ class SGH3D : public Solver
 {
 public:
 
+ //   fracture_patches_t fracture_bank // keeps track of all fracture patches
+ //   bool doing_fracture = false; // a flag to turn on/off fracture; also condition used in SGH::execute
+    
+
     SGH3D()  : Solver()
     {
     }
@@ -231,6 +237,7 @@ public:
         DCArrayKokkos<double>&     node_vel,
         const double time_value) const;
 
+        
     void boundary_stress(const Mesh_t& mesh,
                     const BoundaryCondition_t& BoundaryConditions,
                     DCArrayKokkos<double>& node_bdy_force,

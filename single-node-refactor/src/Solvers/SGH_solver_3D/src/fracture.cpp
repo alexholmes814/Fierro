@@ -9,6 +9,7 @@
 #include <iomanip>
 #include "mesh.h"
 #include "state.h"
+#include "fracture.h"
 
 using namespace mtr; // matar namespace
 
