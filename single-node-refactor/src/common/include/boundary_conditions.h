@@ -87,7 +87,7 @@ enum BCStressModels
     constantStressBC = 1,
     timeVaryingStressBC = 2,
     userDefinedStressBC = 3,
-    globalFracture = 4,        // special BC to open all fracture surfaces
+    FractureStressBC = 4,        // special BC to open all fracture surfaces
 };
 // future model options:
 //    displacementBC                            
@@ -149,7 +149,7 @@ static std::map<std::string, boundary_conditions::BCStressModels> bc_stress_mode
     { "constant", boundary_conditions::constantStressBC },
     { "time_varying", boundary_conditions::timeVaryingStressBC },
     { "user_defined", boundary_conditions::userDefinedStressBC },
-    { "global_fracture", boundary_conditions::globalFracture }          // special BC to open all fracture surfaces
+    { "fracture", boundary_conditions::FractureStressBC }          // special BC to open all fracture surfaces
 };
 
 
@@ -270,7 +270,7 @@ struct BoundaryCondition_t
     size_t num_bcs; // the number of boundary conditions
 
     // boolean for whether fracture should occur
-    bool allow_fracture = false;
+    bool allow_fracture = true; // set to true for test. when figure out the fracture model and associated boundary conditions, this will be set to false
 
     // making a psuedo dual ragged right
     DCArrayKokkos<size_t> vel_bdy_sets_in_solver;     // (solver_id, bc_lid)

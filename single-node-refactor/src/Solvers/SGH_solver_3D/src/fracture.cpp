@@ -12,7 +12,7 @@
 #include "fracture.h"
 
 using namespace mtr; // matar namespace
-
+/* 
 // This code runs a 3D Total Lagrangian Method Linear Elastic Finite Element Analysis with Viscoelastic Cohezive Zones between elements for modeling fracturebased upon a user provided input file
 // The analysis as of Oct 21st, 2024 will consider an isotropic homogenous linear elastic bulk material and neglects body forces
 // Interpolation functions are that of the Lagrange Family for an 8-node 1st order brick element
@@ -808,8 +808,72 @@ CArray <double> gpglob(int NEL, double gp, CArray <double> elcoords, CArray <dou
     }
     return gpcoords;
 }
-
+ */
 // START OF VISCOELASTIC COHESIVE ZONE FUNCTIONS
+
+cohesive_zones_t::cohesive_zones_t() {
+    // constructor for cohesive zones
+}
+
+// initialize the identification of cohesive zones
+// this is an algorithim for identifying cohesive zones in a mesh
+// it loops over all nodal coordinates and identifies overlapping nodal coordinate pairs
+void cohesive_zones_t::initialize(Mesh_t& mesh, State_t& State){
+    // the following code counts the number of boundary nodes and checks for node overlaps (2 nodes with the same coordinates)
+    // this is the beginning step to setting up cohesive zones for fracture
+                   
+    // counting the number of boundary nodes
+    size_t num_bdy_nodes = mesh.num_bdy_nodes;
+    std::cout << "Number of boundary nodes: " << num_bdy_nodes << std::endl;
+    std::cout << "Total boundary nodes: " << mesh.num_bdy_nodes << std::endl;
+
+    // total number of boundary nodes across all sets
+    size_t total_bdy_nodes = 0;
+    for (size_t i = 0; i < mesh.num_bdy_sets; ++i) {
+        std::cout << "Boundary nodes in set " << i << ": " << mesh.num_bdy_nodes_in_set(i) << std::endl;
+    }
+    
+
+    size_t overlap_count = 0;
+
+    const double tol = 0.000001; //0.000001; //e-3; // adjust as needed; added just in case coordinate pairs are close but not exactly equal
+
+    for (size_t i = 0; i < mesh.num_bdy_nodes; ++i) { // outer loop goes through each boundary node
+        size_t node_i = mesh.bdy_nodes(i);
+        for (size_t j = i + 1; j < mesh.num_bdy_nodes; ++j) { // Avoid duplicate pairs and i == j (starts from i +1), for each pair, compares coordinates k = 0, 1, 2
+            size_t node_j = mesh.bdy_nodes(j);
+            bool overlap = true;
+
+            for (size_t k = 0; k < 3; ++k) {
+                double diff = State.node.coords(node_i, k) - State.node.coords(node_j, k);
+                if (std::abs(diff) > tol) {
+                 overlap = false;
+                break;
+                }
+            }
+            if (overlap) {
+            std::cout << "Overlap found between node " << node_i << " and node " << node_j << std::endl;
+            ++overlap_count;
+            }
+        }
+    }
+
+    std::cout << "Total overlapping node pairs: " << overlap_count << std::endl; //prints overlapping node pairs
+
+    // printing nodal coordinates to check for overlaps 
+    for (size_t i = 0; i < mesh.num_bdy_nodes; ++i) {
+        size_t node_id = mesh.bdy_nodes(i);
+        std::cout << "Node " << node_id << " coordinates: ";
+        for (size_t k = 0; k < 3; ++k) { // 3D
+            std::cout << State.node.coords(node_id, k) << " ";
+        }
+        std::cout << std::endl;
+    }   
+
+
+}
+
+/* 
 
 // returns max number of elements any VCZ node is part of connectivity for in order to define VCZ array sizes properly
 int elcount(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<int> vczconn) {
@@ -996,1399 +1060,1402 @@ void paravecs(CArray<double> nodes, CArray<int> conn, FArray<double> interpvals,
     }
 
 }
+ */
 
-// inputs: NODES, conn, NE, NVCZ, VCZconn, VCZelem, interpvals
-// outputs: VCZinfo
-CArray<int> faces(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<int> vczconn, CArray<int> vczelem, FArray<double> interpvals, int maxel) {
-    // initializing output array
-    auto vczinfo = CArray <int> (nvcz,6*maxel);
-    for (int i = 0; i < nvcz; i++) {
-        for (int j = 0; j < 2 * maxel; j++) {
-            vczinfo(i,j) = vczelem(i,j);
-            vczinfo(i,j + 2 * maxel) = -1;
-            vczinfo(i,j + 4 * maxel) = -1;
-        }
-    }
+// // inputs: NODES, conn, NE, NVCZ, VCZconn, VCZelem, interpvals
+// // outputs: VCZinfo
+// CArray<int> faces(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<int> vczconn, CArray<int> vczelem, FArray<double> interpvals, int maxel) {
+//     // initializing output array
+//     auto vczinfo = CArray <int> (nvcz,6*maxel);
+//     for (int i = 0; i < nvcz; i++) {
+//         for (int j = 0; j < 2 * maxel; j++) {
+//             vczinfo(i,j) = vczelem(i,j);
+//             vczinfo(i,j + 2 * maxel) = -1;
+//             vczinfo(i,j + 4 * maxel) = -1;
+//         }
+//     }
     
-    // initializing intermediate array
-    auto vczfaces = CArray <int> (nvcz,6*maxel);
-    for (int i = 0; i < nvcz; i++) {
-        for (int j = 0; j < 6 * maxel; j++) {
-            vczfaces(i,j) = -1;
-        }
-    }
+//     // initializing intermediate array
+//     auto vczfaces = CArray <int> (nvcz,6*maxel);
+//     for (int i = 0; i < nvcz; i++) {
+//         for (int j = 0; j < 6 * maxel; j++) {
+//             vczfaces(i,j) = -1;
+//         }
+//     }
     
-    // intermediate value
-    int cnt;
+//     // intermediate value
+//     int cnt;
     
-    // looping over all VCZ elements to populate VCZfaces based upon VCZelem and connectivities
-    for (int i = 0; i < nvcz; i++) {
-        cnt = 0;
-        for (int j = 0; j < maxel; j++) {
-            if (vczelem(i,j) != -1) {
-                for (int k = 0; k < 8; k++) {
-                    if (conn(vczelem(i,j),k) == vczconn(i,0)) {
-                        vczinfo(i,4*maxel+cnt) = k;
-                        switch (k) {
-                        case 0:
-                            vczfaces(i,3 * j) = 0;
-                            vczfaces(i,3 * j + 1) = 2;
-                            vczfaces(i,3 * j + 2) = 4;
-                            break;
-                        case 1:
-                            vczfaces(i,3 * j) = 0;
-                            vczfaces(i,3 * j + 1) = 2;
-                            vczfaces(i,3 * j + 2) = 5;
-                            break;
-                        case 2:
-                            vczfaces(i,3 * j) = 1;
-                            vczfaces(i,3 * j + 1) = 2;
-                            vczfaces(i,3 * j + 2) = 5;
-                            break;
-                        case 3:
-                            vczfaces(i,3 * j) = 1;
-                            vczfaces(i,3 * j + 1) = 2;
-                            vczfaces(i,3 * j + 2) = 4;
-                            break;
-                        case 4:
-                            vczfaces(i,3 * j) = 0;
-                            vczfaces(i,3 * j + 1) = 3;
-                            vczfaces(i,3 * j + 2) = 4;
-                            break;
-                        case 5:
-                            vczfaces(i,3 * j) = 0;
-                            vczfaces(i,3 * j + 1) = 3;
-                            vczfaces(i,3 * j + 2) = 5;
-                            break;
-                        case 6:
-                            vczfaces(i,3 * j) = 1;
-                            vczfaces(i,3 * j + 1) = 3;
-                            vczfaces(i,3 * j + 2) = 5;
-                            break;
-                        case 7:
-                            vczfaces(i,3 * j) = 1;
-                            vczfaces(i,3 * j + 1) = 3;
-                            vczfaces(i,3 * j + 2) = 4;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (vczelem(i,j+maxel) != -1) {
-                for (int k = 0; k < 8; k++) {
-                    if (conn(vczelem(i,j+maxel),k) == vczconn(i,1)) {
-                        vczinfo(i,5*maxel+cnt) = k;
-                        switch (k) {
-                        case 0:
-                            vczfaces(i,3 * maxel + 3 * j) = 0;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 2;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 4;
-                            break;
-                        case 1:
-                            vczfaces(i,3 * maxel + 3 * j) = 0;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 2;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 5;
-                            break;
-                        case 2:
-                            vczfaces(i,3 * maxel + 3 * j) = 1;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 2;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 5;
-                            break;
-                        case 3:
-                            vczfaces(i,3 * maxel + 3 * j) = 1;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 2;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 4;
-                            break;
-                        case 4:
-                            vczfaces(i,3 * maxel + 3 * j) = 0;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 3;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 4;
-                            break;
-                        case 5:
-                            vczfaces(i,3 * maxel + 3 * j) = 0;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 3;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 5;
-                            break;
-                        case 6:
-                            vczfaces(i,3 * maxel + 3 * j) = 1;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 3;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 5;
-                            break;
-                        case 7:
-                            vczfaces(i,3 * maxel + 3 * j) = 1;
-                            vczfaces(i,3 * maxel + 3 * j + 1) = 3;
-                            vczfaces(i,3 * maxel + 3 * j + 2) = 4;
-                            break;
-                        }
-                    }
-                }
-            }
-            cnt += 1;
-        }
-    }
+//     // looping over all VCZ elements to populate VCZfaces based upon VCZelem and connectivities
+//     for (int i = 0; i < nvcz; i++) {
+//         cnt = 0;
+//         for (int j = 0; j < maxel; j++) {
+//             if (vczelem(i,j) != -1) {
+//                 for (int k = 0; k < 8; k++) {
+//                     if (conn(vczelem(i,j),k) == vczconn(i,0)) {
+//                         vczinfo(i,4*maxel+cnt) = k;
+//                         switch (k) {
+//                         case 0:
+//                             vczfaces(i,3 * j) = 0;
+//                             vczfaces(i,3 * j + 1) = 2;
+//                             vczfaces(i,3 * j + 2) = 4;
+//                             break;
+//                         case 1:
+//                             vczfaces(i,3 * j) = 0;
+//                             vczfaces(i,3 * j + 1) = 2;
+//                             vczfaces(i,3 * j + 2) = 5;
+//                             break;
+//                         case 2:
+//                             vczfaces(i,3 * j) = 1;
+//                             vczfaces(i,3 * j + 1) = 2;
+//                             vczfaces(i,3 * j + 2) = 5;
+//                             break;
+//                         case 3:
+//                             vczfaces(i,3 * j) = 1;
+//                             vczfaces(i,3 * j + 1) = 2;
+//                             vczfaces(i,3 * j + 2) = 4;
+//                             break;
+//                         case 4:
+//                             vczfaces(i,3 * j) = 0;
+//                             vczfaces(i,3 * j + 1) = 3;
+//                             vczfaces(i,3 * j + 2) = 4;
+//                             break;
+//                         case 5:
+//                             vczfaces(i,3 * j) = 0;
+//                             vczfaces(i,3 * j + 1) = 3;
+//                             vczfaces(i,3 * j + 2) = 5;
+//                             break;
+//                         case 6:
+//                             vczfaces(i,3 * j) = 1;
+//                             vczfaces(i,3 * j + 1) = 3;
+//                             vczfaces(i,3 * j + 2) = 5;
+//                             break;
+//                         case 7:
+//                             vczfaces(i,3 * j) = 1;
+//                             vczfaces(i,3 * j + 1) = 3;
+//                             vczfaces(i,3 * j + 2) = 4;
+//                             break;
+//                         }
+//                     }
+//                 }
+//             }
+//             if (vczelem(i,j+maxel) != -1) {
+//                 for (int k = 0; k < 8; k++) {
+//                     if (conn(vczelem(i,j+maxel),k) == vczconn(i,1)) {
+//                         vczinfo(i,5*maxel+cnt) = k;
+//                         switch (k) {
+//                         case 0:
+//                             vczfaces(i,3 * maxel + 3 * j) = 0;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 2;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 4;
+//                             break;
+//                         case 1:
+//                             vczfaces(i,3 * maxel + 3 * j) = 0;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 2;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 5;
+//                             break;
+//                         case 2:
+//                             vczfaces(i,3 * maxel + 3 * j) = 1;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 2;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 5;
+//                             break;
+//                         case 3:
+//                             vczfaces(i,3 * maxel + 3 * j) = 1;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 2;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 4;
+//                             break;
+//                         case 4:
+//                             vczfaces(i,3 * maxel + 3 * j) = 0;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 3;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 4;
+//                             break;
+//                         case 5:
+//                             vczfaces(i,3 * maxel + 3 * j) = 0;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 3;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 5;
+//                             break;
+//                         case 6:
+//                             vczfaces(i,3 * maxel + 3 * j) = 1;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 3;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 5;
+//                             break;
+//                         case 7:
+//                             vczfaces(i,3 * maxel + 3 * j) = 1;
+//                             vczfaces(i,3 * maxel + 3 * j + 1) = 3;
+//                             vczfaces(i,3 * maxel + 3 * j + 2) = 4;
+//                             break;
+//                         }
+//                     }
+//                 }
+//             }
+//             cnt += 1;
+//         }
+//     }
     
-    // initialize intermediate variables
-    auto nj = CArray <double> (3,1);
-    auto rj = CArray <double> (3,1);
-    auto sj = CArray <double> (3,1);
-    auto nk = CArray <double> (3,1);
-    auto rk = CArray <double> (3,1);
-    auto sk = CArray <double> (3,1);
-    auto cenfacej = CArray <double> (3,1);
-    auto cenfacek = CArray <double> (3,1);
-    for (int i = 0; i < 3; i++) {
-        nj(i,0) = 0;
-        rj(i,0) = 0;
-        sj(i,0) = 0;
-        nk(i,0) = 0;
-        rk(i,0) = 0;
-        sk(i,0) = 0;
-        cenfacej(i,0) = 0;
-        cenfacek(i,0) = 0;
-    }
-    int count = 0;
+//     // initialize intermediate variables
+//     auto nj = CArray <double> (3,1);
+//     auto rj = CArray <double> (3,1);
+//     auto sj = CArray <double> (3,1);
+//     auto nk = CArray <double> (3,1);
+//     auto rk = CArray <double> (3,1);
+//     auto sk = CArray <double> (3,1);
+//     auto cenfacej = CArray <double> (3,1);
+//     auto cenfacek = CArray <double> (3,1);
+//     for (int i = 0; i < 3; i++) {
+//         nj(i,0) = 0;
+//         rj(i,0) = 0;
+//         sj(i,0) = 0;
+//         nk(i,0) = 0;
+//         rk(i,0) = 0;
+//         sk(i,0) = 0;
+//         cenfacej(i,0) = 0;
+//         cenfacek(i,0) = 0;
+//     }
+//     int count = 0;
     
-    // looping over all VCZ elements to populate VCZinfo based upon VCZelem, VCZfaces, and connectivities
-    for (int i = 0; i < nvcz; i++) {
-        count = 0;
-        for (int j = 0; j < 3 * maxel; j++) {
-            // calculating normal vector for j face
-            paravecs(nodes, conn, interpvals, vczfaces(i,j), vczelem(i,static_cast<int>(floor(j / 3))), nj, rj, sj, cenfacej);
-            for (int k = 0; k < 3 * maxel; k++) {
-                // calculating normal vector for k face
-                paravecs(nodes, conn, interpvals, vczfaces(i,k + 3 * maxel), vczelem(i,static_cast<int>(floor(k / 3) + maxel)), nk, rk, sk, cenfacek);
-                // checking that normal vectors are opposing and that the faces are in contact with eachother (center of face overlaps)
-                if (nj(0,0) == -nk(0,0) && nj(1,0) == -nk(1,0) && nj(2,0) == -nk(2,0) && cenfacej(0,0) == cenfacek(0,0) && cenfacej(1,0) == cenfacek(1,0) && cenfacej(2,0) == cenfacek(2,0)) {
-                    vczinfo(i,count + 2 * maxel) = vczfaces(i,j);
-                    vczinfo(i,3 * maxel + count) = vczfaces(i,k + 3 * maxel);
-                    count += 1;
-                    break;
-                }
-            }
-            if (vczinfo(i,count + 2 * maxel) != -1) {
-                break;
-            }
-        }
-    }
+//     // looping over all VCZ elements to populate VCZinfo based upon VCZelem, VCZfaces, and connectivities
+//     for (int i = 0; i < nvcz; i++) {
+//         count = 0;
+//         for (int j = 0; j < 3 * maxel; j++) {
+//             // calculating normal vector for j face
+//             paravecs(nodes, conn, interpvals, vczfaces(i,j), vczelem(i,static_cast<int>(floor(j / 3))), nj, rj, sj, cenfacej);
+//             for (int k = 0; k < 3 * maxel; k++) {
+//                 // calculating normal vector for k face
+//                 paravecs(nodes, conn, interpvals, vczfaces(i,k + 3 * maxel), vczelem(i,static_cast<int>(floor(k / 3) + maxel)), nk, rk, sk, cenfacek);
+//                 // checking that normal vectors are opposing and that the faces are in contact with eachother (center of face overlaps)
+//                 if (nj(0,0) == -nk(0,0) && nj(1,0) == -nk(1,0) && nj(2,0) == -nk(2,0) && cenfacej(0,0) == cenfacek(0,0) && cenfacej(1,0) == cenfacek(1,0) && cenfacej(2,0) == cenfacek(2,0)) {
+//                     vczinfo(i,count + 2 * maxel) = vczfaces(i,j);
+//                     vczinfo(i,3 * maxel + count) = vczfaces(i,k + 3 * maxel);
+//                     count += 1;
+//                     break;
+//                 }
+//             }
+//             if (vczinfo(i,count + 2 * maxel) != -1) {
+//                 break;
+//             }
+//         }
+//     }
     
-    return vczinfo;
+//     return vczinfo;
 
-}
+// }
 
-// sequentially calling preprocessing functions
-CArray<int> VCZmeshpreprocess(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<int> vczconn, FArray<double> interpvals) {
-    int maxel = elcount(nodes, conn, ne, nvcz, vczconn);
-    CArray<int> vczelem = elems(nodes, conn, ne, nvcz, vczconn, maxel);
-    CArray<int> vczinfo = faces(nodes, conn, ne, nvcz, vczconn, vczelem, interpvals, maxel);
-    /* vczinfo columns are each by number of maxel for total size of [nvcz by 6*maxel]
-    [elems first glob node     elems second glob node     patch first glob node     patch second glob node
-    local conn index first glob node     local conn index second glob node] */
-    return vczinfo;
+// // sequentially calling preprocessing functions
+// CArray<int> VCZmeshpreprocess(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<int> vczconn, FArray<double> interpvals) {
+//     int maxel = elcount(nodes, conn, ne, nvcz, vczconn);
+//     CArray<int> vczelem = elems(nodes, conn, ne, nvcz, vczconn, maxel);
+//     CArray<int> vczinfo = faces(nodes, conn, ne, nvcz, vczconn, vczelem, interpvals, maxel);
+//     /* vczinfo columns are each by number of maxel for total size of [nvcz by 6*maxel]
+//     [elems first glob node     elems second glob node     patch first glob node     patch second glob node
+//     local conn index first glob node     local conn index second glob node] */
+//     return vczinfo;
     
-}
+// }
 
-// This function takes reference configuration and total displacements then returns a set of local direction vectors for the VCZ
-// based upon the average orientation of the elements the VCZ nodes are part of
-// inputs: nodes, conn, ne, ut, us, vczconn, vczinfo, nvcz, interpvals
-// outputs: vczorient (updated orientation of VCZs based on current configuration)
-void oriented(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<double> ut, CArray<double> us, CArray<int> vczinfo, FArray<double> interpvals, CArray<double> vczorient) {
-    // resetting output array
-    vczorient.set_values(0);
+// // This function takes reference configuration and total displacements then returns a set of local direction vectors for the VCZ
+// // based upon the average orientation of the elements the VCZ nodes are part of
+// // inputs: nodes, conn, ne, ut, us, vczconn, vczinfo, nvcz, interpvals
+// // outputs: vczorient (updated orientation of VCZs based on current configuration)
+// void oriented(CArray<double> nodes, CArray<int> conn, int ne, int nvcz, CArray<double> ut, CArray<double> us, CArray<int> vczinfo, FArray<double> interpvals, CArray<double> vczorient) {
+//     // resetting output array
+//     vczorient.set_values(0);
     
-    // initializing intermediate variables
-    int ln0;
-    int ln1;
-    int lp0;
-    int lp1;
-    int el0;
-    int el1;
-    int cnt;
-    double n0magt;
-    double n0magtdt;
-    auto currel0t = CArray <double> (8,3);
-    auto currel1t = CArray <double> (8,3);
-    auto currel0tdt = CArray <double> (8,3);
-    auto currel1tdt = CArray <double> (8,3);
-    auto pnodes = CArray <int> (4,1);
-    auto mastan = CArray <int> (2,1);
-    auto r0t = CArray <double> (3);
-    auto s0t = CArray <double> (3);
-    auto r0tdt = CArray <double> (3);
-    auto s0tdt = CArray <double> (3);
-    auto r1t = CArray <double> (3);
-    auto s1t = CArray <double> (3);
-    auto r1tdt = CArray <double> (3);
-    auto s1tdt = CArray <double> (3);
-    auto n0t = CArray <double> (3);
-    auto n0tdt = CArray <double> (3);
-    auto n1t = CArray <double> (3);
-    auto n1tdt = CArray <double> (3);
-    n0t.set_values(0);
+//     // initializing intermediate variables
+//     int ln0;
+//     int ln1;
+//     int lp0;
+//     int lp1;
+//     int el0;
+//     int el1;
+//     int cnt;
+//     double n0magt;
+//     double n0magtdt;
+//     auto currel0t = CArray <double> (8,3);
+//     auto currel1t = CArray <double> (8,3);
+//     auto currel0tdt = CArray <double> (8,3);
+//     auto currel1tdt = CArray <double> (8,3);
+//     auto pnodes = CArray <int> (4,1);
+//     auto mastan = CArray <int> (2,1);
+//     auto r0t = CArray <double> (3);
+//     auto s0t = CArray <double> (3);
+//     auto r0tdt = CArray <double> (3);
+//     auto s0tdt = CArray <double> (3);
+//     auto r1t = CArray <double> (3);
+//     auto s1t = CArray <double> (3);
+//     auto r1tdt = CArray <double> (3);
+//     auto s1tdt = CArray <double> (3);
+//     auto n0t = CArray <double> (3);
+//     auto n0tdt = CArray <double> (3);
+//     auto n1t = CArray <double> (3);
+//     auto n1tdt = CArray <double> (3);
+//     n0t.set_values(0);
 
-    // looping through each vcz
-    for (int i = 0; i < nvcz; i++) {
-        cnt = 0;
-        // looping over possible number of elements to average the orientation of
-        for (int j = 0; j < vczinfo.dims(1)/6; j++) {
-            // resetting tangent vectors
-            r0t.set_values(0);
-            s0t.set_values(0);
-            r0tdt.set_values(0);
-            s0tdt.set_values(0);
+//     // looping through each vcz
+//     for (int i = 0; i < nvcz; i++) {
+//         cnt = 0;
+//         // looping over possible number of elements to average the orientation of
+//         for (int j = 0; j < vczinfo.dims(1)/6; j++) {
+//             // resetting tangent vectors
+//             r0t.set_values(0);
+//             s0t.set_values(0);
+//             r0tdt.set_values(0);
+//             s0tdt.set_values(0);
 
-            // checking that the index is populated with an element reference
-            if (vczinfo(i,j+2*vczinfo.dims(1)/6) != -1) {
-                // storing element reference information, local node on the elements, and the patch of the element
-                // only using 0 index for average normal direction of first global node as of 12/20/2024
-                el0 = vczinfo(i,j);
-                el1 = vczinfo(i,j+vczinfo.dims(1)/6);
-                lp0 = vczinfo(i,j+2*vczinfo.dims(1)/6);
-                lp1 = vczinfo(i,j+3*vczinfo.dims(1)/6);
-                ln0 = vczinfo(i,j+4*vczinfo.dims(1)/6);
-                ln1 = vczinfo(i,j+5*vczinfo.dims(1)/6);
+//             // checking that the index is populated with an element reference
+//             if (vczinfo(i,j+2*vczinfo.dims(1)/6) != -1) {
+//                 // storing element reference information, local node on the elements, and the patch of the element
+//                 // only using 0 index for average normal direction of first global node as of 12/20/2024
+//                 el0 = vczinfo(i,j);
+//                 el1 = vczinfo(i,j+vczinfo.dims(1)/6);
+//                 lp0 = vczinfo(i,j+2*vczinfo.dims(1)/6);
+//                 lp1 = vczinfo(i,j+3*vczinfo.dims(1)/6);
+//                 ln0 = vczinfo(i,j+4*vczinfo.dims(1)/6);
+//                 ln1 = vczinfo(i,j+5*vczinfo.dims(1)/6);
 
-                // finding current configuration of the elements
-                for (int k = 0; k < 8; k++) {
-                    for (int m = 0; m < 3; m++) {
-                        currel0t(k,m) = nodes(conn(el0,k),m) + ut(3*conn(el0,k)+m);
-                        currel1t(k,m) = nodes(conn(el1,k),m) + ut(3*conn(el0,k)+m);
-                        currel0tdt(k,m) = nodes(conn(el0,k),m) + ut(3*conn(el0,k)+m) + us(3*conn(el0,k)+m);
-                        currel1tdt(k,m) = nodes(conn(el1,k),m) + ut(3*conn(el0,k)+m) + us(3*conn(el0,k)+m);
-                    }
-                }
+//                 // finding current configuration of the elements
+//                 for (int k = 0; k < 8; k++) {
+//                     for (int m = 0; m < 3; m++) {
+//                         currel0t(k,m) = nodes(conn(el0,k),m) + ut(3*conn(el0,k)+m);
+//                         currel1t(k,m) = nodes(conn(el1,k),m) + ut(3*conn(el0,k)+m);
+//                         currel0tdt(k,m) = nodes(conn(el0,k),m) + ut(3*conn(el0,k)+m) + us(3*conn(el0,k)+m);
+//                         currel1tdt(k,m) = nodes(conn(el1,k),m) + ut(3*conn(el0,k)+m) + us(3*conn(el0,k)+m);
+//                     }
+//                 }
 
-                // finding tangent vectors
-                switch (lp0) {
-                case 0:
-                    MasterShapes(interpvals,-1,0,0);
-                    pnodes(0,0) = 0;
-                    pnodes(1,0) = 1;
-                    pnodes(2,0) = 4;
-                    pnodes(3,0) = 5;
-                    mastan(0,0) = 1;
-                    mastan(1,0) = 2;
-                    break;
-                case 1:
-                    MasterShapes(interpvals,1,0,0);
-                    pnodes(0,0) = 2;
-                    pnodes(1,0) = 3;
-                    pnodes(2,0) = 6;
-                    pnodes(3,0) = 7;
-                    mastan(0,0) = 1;
-                    mastan(1,0) = 2;
-                    break;
-                case 2:
-                    MasterShapes(interpvals,0,-1,0);
-                    pnodes(0,0) = 0;
-                    pnodes(1,0) = 1;
-                    pnodes(2,0) = 2;
-                    pnodes(3,0) = 3;
-                    mastan(0,0) = 0;
-                    mastan(1,0) = 2;
-                    break;
-                case 3:
-                    MasterShapes(interpvals,0,1,0);
-                    pnodes(0,0) = 4;
-                    pnodes(1,0) = 5;
-                    pnodes(2,0) = 6;
-                    pnodes(3,0) = 7;
-                    mastan(0,0) = 0;
-                    mastan(1,0) = 2;
-                    break;
-                case 4:
-                    MasterShapes(interpvals,0,0,-1);
-                    pnodes(0,0) = 0;
-                    pnodes(1,0) = 3;
-                    pnodes(2,0) = 4;
-                    pnodes(3,0) = 7;
-                    mastan(0,0) = 0;
-                    mastan(1,0) = 1;
-                    break;
-                case 5:
-                    MasterShapes(interpvals,0,0,1);
-                    pnodes(0,0) = 1;
-                    pnodes(1,0) = 2;
-                    pnodes(2,0) = 5;
-                    pnodes(3,0) = 6;
-                    mastan(0,0) = 0;
-                    mastan(1,0) = 1;
-                    break;
-                }
+//                 // finding tangent vectors
+//                 switch (lp0) {
+//                 case 0:
+//                     MasterShapes(interpvals,-1,0,0);
+//                     pnodes(0,0) = 0;
+//                     pnodes(1,0) = 1;
+//                     pnodes(2,0) = 4;
+//                     pnodes(3,0) = 5;
+//                     mastan(0,0) = 1;
+//                     mastan(1,0) = 2;
+//                     break;
+//                 case 1:
+//                     MasterShapes(interpvals,1,0,0);
+//                     pnodes(0,0) = 2;
+//                     pnodes(1,0) = 3;
+//                     pnodes(2,0) = 6;
+//                     pnodes(3,0) = 7;
+//                     mastan(0,0) = 1;
+//                     mastan(1,0) = 2;
+//                     break;
+//                 case 2:
+//                     MasterShapes(interpvals,0,-1,0);
+//                     pnodes(0,0) = 0;
+//                     pnodes(1,0) = 1;
+//                     pnodes(2,0) = 2;
+//                     pnodes(3,0) = 3;
+//                     mastan(0,0) = 0;
+//                     mastan(1,0) = 2;
+//                     break;
+//                 case 3:
+//                     MasterShapes(interpvals,0,1,0);
+//                     pnodes(0,0) = 4;
+//                     pnodes(1,0) = 5;
+//                     pnodes(2,0) = 6;
+//                     pnodes(3,0) = 7;
+//                     mastan(0,0) = 0;
+//                     mastan(1,0) = 2;
+//                     break;
+//                 case 4:
+//                     MasterShapes(interpvals,0,0,-1);
+//                     pnodes(0,0) = 0;
+//                     pnodes(1,0) = 3;
+//                     pnodes(2,0) = 4;
+//                     pnodes(3,0) = 7;
+//                     mastan(0,0) = 0;
+//                     mastan(1,0) = 1;
+//                     break;
+//                 case 5:
+//                     MasterShapes(interpvals,0,0,1);
+//                     pnodes(0,0) = 1;
+//                     pnodes(1,0) = 2;
+//                     pnodes(2,0) = 5;
+//                     pnodes(3,0) = 6;
+//                     mastan(0,0) = 0;
+//                     mastan(1,0) = 1;
+//                     break;
+//                 }
                 
-                for (int k = 0; k < 4; k++) {
-                    // r vector
-                    r0t(0) += currel0t(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(0,0) + 1);
-                    r0t(1) += currel0t(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(0,0) + 1);
-                    r0t(2) += currel0t(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(0,0) + 1);
-                    r0tdt(0) += currel0tdt(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(0,0) + 1);
-                    r0tdt(1) += currel0tdt(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(0,0) + 1);
-                    r0tdt(2) += currel0tdt(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(0,0) + 1);
-                    // s vector
-                    s0t(0) += currel0t(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(1,0) + 1);
-                    s0t(1) += currel0t(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(1,0) + 1);
-                    s0t(2) += currel0t(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(1,0) + 1);
-                    s0tdt(0) += currel0tdt(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(1,0) + 1);
-                    s0tdt(1) += currel0tdt(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(1,0) + 1);
-                    s0tdt(2) += currel0tdt(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(1,0) + 1);
-                }
+//                 for (int k = 0; k < 4; k++) {
+//                     // r vector
+//                     r0t(0) += currel0t(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(0,0) + 1);
+//                     r0t(1) += currel0t(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(0,0) + 1);
+//                     r0t(2) += currel0t(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(0,0) + 1);
+//                     r0tdt(0) += currel0tdt(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(0,0) + 1);
+//                     r0tdt(1) += currel0tdt(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(0,0) + 1);
+//                     r0tdt(2) += currel0tdt(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(0,0) + 1);
+//                     // s vector
+//                     s0t(0) += currel0t(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(1,0) + 1);
+//                     s0t(1) += currel0t(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(1,0) + 1);
+//                     s0t(2) += currel0t(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(1,0) + 1);
+//                     s0tdt(0) += currel0tdt(pnodes(k,0),0) * interpvals(pnodes(k,0),mastan(1,0) + 1);
+//                     s0tdt(1) += currel0tdt(pnodes(k,0),1) * interpvals(pnodes(k,0),mastan(1,0) + 1);
+//                     s0tdt(2) += currel0tdt(pnodes(k,0),2) * interpvals(pnodes(k,0),mastan(1,0) + 1);
+//                 }
 
-                // cross product for normal vector
-                if (lp0 == 0 || lp0 == 3 || lp0 == 4) {
-                    // s cross r
-                    n0t(0) += s0t(1) * r0t(2) - r0t(1) * s0t(2);
-                    n0t(1) += -(s0t(0) * r0t(2) - r0t(0) * s0t(2));
-                    n0t(2) += s0t(0) * r0t(1) - r0t(0) * s0t(1);
-                    n0tdt(0) += s0tdt(1) * r0tdt(2) - r0tdt(1) * s0tdt(2);
-                    n0tdt(1) += -(s0tdt(0) * r0tdt(2) - r0tdt(0) * s0tdt(2));
-                    n0tdt(2) += s0tdt(0) * r0tdt(1) - r0tdt(0) * s0tdt(1);
-                }
-                else {
-                    // r cross s
-                    n0t(0) += r0t(1) * s0t(2) - s0t(1) * r0t(2);
-                    n0t(1) += -(r0t(0) * s0t(2) - s0t(0) * r0t(2));
-                    n0t(2) += r0t(0) * s0t(1) - s0t(0) * r0t(1);
-                    n0tdt(0) += r0tdt(1) * s0tdt(2) - s0tdt(1) * r0tdt(2);
-                    n0tdt(1) += -(r0tdt(0) * s0tdt(2) - s0tdt(0) * r0tdt(2));
-                    n0tdt(2) += r0tdt(0) * s0tdt(1) - s0tdt(0) * r0tdt(1);
-                }
-                cnt += 1;
-            }
-        }
+//                 // cross product for normal vector
+//                 if (lp0 == 0 || lp0 == 3 || lp0 == 4) {
+//                     // s cross r
+//                     n0t(0) += s0t(1) * r0t(2) - r0t(1) * s0t(2);
+//                     n0t(1) += -(s0t(0) * r0t(2) - r0t(0) * s0t(2));
+//                     n0t(2) += s0t(0) * r0t(1) - r0t(0) * s0t(1);
+//                     n0tdt(0) += s0tdt(1) * r0tdt(2) - r0tdt(1) * s0tdt(2);
+//                     n0tdt(1) += -(s0tdt(0) * r0tdt(2) - r0tdt(0) * s0tdt(2));
+//                     n0tdt(2) += s0tdt(0) * r0tdt(1) - r0tdt(0) * s0tdt(1);
+//                 }
+//                 else {
+//                     // r cross s
+//                     n0t(0) += r0t(1) * s0t(2) - s0t(1) * r0t(2);
+//                     n0t(1) += -(r0t(0) * s0t(2) - s0t(0) * r0t(2));
+//                     n0t(2) += r0t(0) * s0t(1) - s0t(0) * r0t(1);
+//                     n0tdt(0) += r0tdt(1) * s0tdt(2) - s0tdt(1) * r0tdt(2);
+//                     n0tdt(1) += -(r0tdt(0) * s0tdt(2) - s0tdt(0) * r0tdt(2));
+//                     n0tdt(2) += r0tdt(0) * s0tdt(1) - s0tdt(0) * r0tdt(1);
+//                 }
+//                 cnt += 1;
+//             }
+//         }
 
-        // averaging
-        n0t(0) /= cnt;
-        n0t(1) /= cnt;
-        n0t(2) /= cnt;
-        n0tdt(0) /= cnt;
-        n0tdt(1) /= cnt;
-        n0tdt(2) /= cnt;
+//         // averaging
+//         n0t(0) /= cnt;
+//         n0t(1) /= cnt;
+//         n0t(2) /= cnt;
+//         n0tdt(0) /= cnt;
+//         n0tdt(1) /= cnt;
+//         n0tdt(2) /= cnt;
 
-        // normalizing
-        n0magt = sqrt(n0t(0)*n0t(0) + n0t(1)*n0t(1) + n0t(2)*n0t(2));
-        n0magtdt = sqrt(n0tdt(0)*n0tdt(0) + n0tdt(1)*n0tdt(1) + n0tdt(2)*n0tdt(2));
-        //n0magtdt = sqrt(n0tdt(i,0)*n0tdt(i,0) + n0tdt(i,1)*n0tdt(i,1) + n0tdt(i,2)*n0tdt(i,2));
-        for (int j = 0; j < 3; j++) {
-            vczorient(i,j) = n0t(j) / n0magt;
-            vczorient(i,j+3) = n0tdt(j) / n0magtdt;
-        }
-    }
-}
+//         // normalizing
+//         n0magt = sqrt(n0t(0)*n0t(0) + n0t(1)*n0t(1) + n0t(2)*n0t(2));
+//         n0magtdt = sqrt(n0tdt(0)*n0tdt(0) + n0tdt(1)*n0tdt(1) + n0tdt(2)*n0tdt(2));
+//         //n0magtdt = sqrt(n0tdt(i,0)*n0tdt(i,0) + n0tdt(i,1)*n0tdt(i,1) + n0tdt(i,2)*n0tdt(i,2));
+//         for (int j = 0; j < 3; j++) {
+//             vczorient(i,j) = n0t(j) / n0magt;
+//             vczorient(i,j+3) = n0tdt(j) / n0magtdt;
+//         }
+//     }
+// }
 
-// calculates the opening of the crack in global coordinates and then maps it to local coordinates using normal vectors in
-// vczorient array
-// inputs: nodes, ut, us, vczorient, vczconn, nvcz
-// output: ulocvcz (4 columns: unt untdt utt utdt)
-void ucmap(CArray<double>& nodes, CArray<double>& ut, CArray<double>& us, CArray<double>& vczorient, CArray<int>& vczconn, int nvcz, CArray<double>& ulocvcz) {
-    // intermediate variables
-    auto uglobt = CArray <double> (3);
-    auto uglobtdt = CArray <double> (3);
-    double umagt = 0;
-    double umagtdt = 0;
+
+
+// // calculates the opening of the crack in global coordinates and then maps it to local coordinates using normal vectors in
+// // vczorient array
+// // inputs: nodes, ut, us, vczorient, vczconn, nvcz
+// // output: ulocvcz (4 columns: unt untdt utt utdt)
+// void ucmap(CArray<double>& nodes, CArray<double>& ut, CArray<double>& us, CArray<double>& vczorient, CArray<int>& vczconn, int nvcz, CArray<double>& ulocvcz) {
+//     // intermediate variables
+//     auto uglobt = CArray <double> (3);
+//     auto uglobtdt = CArray <double> (3);
+//     double umagt = 0;
+//     double umagtdt = 0;
     
-    // looping through each vcz
-    for (int i = 0; i < nvcz; i++) {
-        // calculating displacement between vcz nodes in global frame
-        uglobt(0) = (nodes(vczconn(i,1),0) + ut(3*vczconn(i,1))) - (nodes(vczconn(i,0),0) + ut(3*vczconn(i,0)));
-        uglobt(1) = (nodes(vczconn(i,1),1) + ut(3*vczconn(i,1)+1)) - (nodes(vczconn(i,0),1) + ut(3*vczconn(i,0)+1));
-        uglobt(2) = (nodes(vczconn(i,1),2) + ut(3*vczconn(i,1)+2)) - (nodes(vczconn(i,0),2) + ut(3*vczconn(i,0)+2));
-        uglobtdt(0) = (nodes(vczconn(i,1),0) + ut(3*vczconn(i,1)) + us(3*vczconn(i,1))) - (nodes(vczconn(i,0),0) + ut(3*vczconn(i,0)) + us(3*vczconn(i,0)));
-        uglobtdt(1) = (nodes(vczconn(i,1),1) + ut(3*vczconn(i,1)+1) + us(3*vczconn(i,1)+1)) - (nodes(vczconn(i,0),1) + ut(3*vczconn(i,0)+1) + us(3*vczconn(i,0)+1));
-        uglobtdt(2) = (nodes(vczconn(i,1),2) + ut(3*vczconn(i,1)+2) + us(3*vczconn(i,1)+2)) - (nodes(vczconn(i,0),2) + ut(3*vczconn(i,0)+2) + us(3*vczconn(i,0)+2));
+//     // looping through each vcz
+//     for (int i = 0; i < nvcz; i++) {
+//         // calculating displacement between vcz nodes in global frame
+//         uglobt(0) = (nodes(vczconn(i,1),0) + ut(3*vczconn(i,1))) - (nodes(vczconn(i,0),0) + ut(3*vczconn(i,0)));
+//         uglobt(1) = (nodes(vczconn(i,1),1) + ut(3*vczconn(i,1)+1)) - (nodes(vczconn(i,0),1) + ut(3*vczconn(i,0)+1));
+//         uglobt(2) = (nodes(vczconn(i,1),2) + ut(3*vczconn(i,1)+2)) - (nodes(vczconn(i,0),2) + ut(3*vczconn(i,0)+2));
+//         uglobtdt(0) = (nodes(vczconn(i,1),0) + ut(3*vczconn(i,1)) + us(3*vczconn(i,1))) - (nodes(vczconn(i,0),0) + ut(3*vczconn(i,0)) + us(3*vczconn(i,0)));
+//         uglobtdt(1) = (nodes(vczconn(i,1),1) + ut(3*vczconn(i,1)+1) + us(3*vczconn(i,1)+1)) - (nodes(vczconn(i,0),1) + ut(3*vczconn(i,0)+1) + us(3*vczconn(i,0)+1));
+//         uglobtdt(2) = (nodes(vczconn(i,1),2) + ut(3*vczconn(i,1)+2) + us(3*vczconn(i,1)+2)) - (nodes(vczconn(i,0),2) + ut(3*vczconn(i,0)+2) + us(3*vczconn(i,0)+2));
         
-        // dotting with normal vector to get normal component of displacement
-        ulocvcz(i,0) = uglobt(0)*vczorient(i,0) + uglobt(1)*vczorient(i,1) + uglobt(2)*vczorient(i,2);
-        ulocvcz(i,2) = uglobtdt(0)*vczorient(i,3) + uglobtdt(1)*vczorient(i,4) + uglobtdt(2)*vczorient(i,5);
+//         // dotting with normal vector to get normal component of displacement
+//         ulocvcz(i,0) = uglobt(0)*vczorient(i,0) + uglobt(1)*vczorient(i,1) + uglobt(2)*vczorient(i,2);
+//         ulocvcz(i,2) = uglobtdt(0)*vczorient(i,3) + uglobtdt(1)*vczorient(i,4) + uglobtdt(2)*vczorient(i,5);
 
-        // calcuting magnitude of global u vectors
-        umagt = sqrt(uglobt(0)*uglobt(0) + uglobt(1)*uglobt(1) + uglobt(2)*uglobt(2));
-        umagtdt = sqrt(uglobtdt(0)*uglobtdt(0) + uglobtdt(1)*uglobtdt(1) + uglobtdt(2)*uglobtdt(2));
+//         // calcuting magnitude of global u vectors
+//         umagt = sqrt(uglobt(0)*uglobt(0) + uglobt(1)*uglobt(1) + uglobt(2)*uglobt(2));
+//         umagtdt = sqrt(uglobtdt(0)*uglobtdt(0) + uglobtdt(1)*uglobtdt(1) + uglobtdt(2)*uglobtdt(2));
         
-        // calculating tangent component of displacement assuming that us* == ur*
-        ulocvcz(i,1) = sqrt(abs(umagt*umagt - ulocvcz(i,0)*ulocvcz(i,0)));
-        ulocvcz(i,3) = sqrt(abs(umagtdt*umagtdt - ulocvcz(i,2)*ulocvcz(i,2)));
-    }
+//         // calculating tangent component of displacement assuming that us* == ur*
+//         ulocvcz(i,1) = sqrt(abs(umagt*umagt - ulocvcz(i,0)*ulocvcz(i,0)));
+//         ulocvcz(i,3) = sqrt(abs(umagtdt*umagtdt - ulocvcz(i,2)*ulocvcz(i,2)));
+//     }
     
-}
+// }
 
-// This function calculates delta_delta_internal variables (ddinvars)
-// Inputs: cohezive zone local displacments (uvcz [un(t), ut(t), un(t)+dun, ut(t)+dut]x3), time step size (delt), cohesive zone properties (Einf, a1, n, Eandrhom, uns, uts),
-// NPT (number of prony terms), nvcz (number of cohesive zones), internal variables [lambdadot(t-delt) , alpha , <tn,tt> , sig_1 through sig_m] (invars),
-// Output: delta_internal variables [lambdadot(t), d_alpha, d_<tn,tt>, d_sig_1 through d_sig_m]xNCZ (dinvars)
-void internalvars(CArray<double> uvcz, double delt, double Einf, double a1, double n, CArray<double> Eandrhom, double uns, double uts, int npt, int nvcz, CArray<double> invars, CArray<double> dinvars) {
+// // This function calculates delta_delta_internal variables (ddinvars)
+// // Inputs: cohezive zone local displacments (uvcz [un(t), ut(t), un(t)+dun, ut(t)+dut]x3), time step size (delt), cohesive zone properties (Einf, a1, n, Eandrhom, uns, uts),
+// // NPT (number of prony terms), nvcz (number of cohesive zones), internal variables [lambdadot(t-delt) , alpha , <tn,tt> , sig_1 through sig_m] (invars),
+// // Output: delta_internal variables [lambdadot(t), d_alpha, d_<tn,tt>, d_sig_1 through d_sig_m]xNCZ (dinvars)
+// void internalvars(CArray<double> uvcz, double delt, double Einf, double a1, double n, CArray<double> Eandrhom, double uns, double uts, int npt, int nvcz, CArray<double> invars, CArray<double> dinvars) {
     
-    // Initializing variables for calculations
-    double lambdadt = 0;
-    double lambdat = 0;
-    double dadt = 0;
-    double Edelt = 0;
-    double sumsig = 0;
-    double sumsigexp = 0;
+//     // Initializing variables for calculations
+//     double lambdadt = 0;
+//     double lambdat = 0;
+//     double dadt = 0;
+//     double Edelt = 0;
+//     double sumsig = 0;
+//     double sumsigexp = 0;
 
-    // Calculating E(delt) NOTE: This is a redundant calculation so long as delt is uniform across time steps that ideally should be moved elsewhere to avoid repeating it unless delt is made to vary across steps
-    Edelt += Einf;
-    for (int i = 0; i < npt; i++) {
-        Edelt += Eandrhom(i,0) * Eandrhom(i,1) * (1 - exp(-delt / Eandrhom(i,1))) / delt;
-    }
+//     // Calculating E(delt) NOTE: This is a redundant calculation so long as delt is uniform across time steps that ideally should be moved elsewhere to avoid repeating it unless delt is made to vary across steps
+//     Edelt += Einf;
+//     for (int i = 0; i < npt; i++) {
+//         Edelt += Eandrhom(i,0) * Eandrhom(i,1) * (1 - exp(-delt / Eandrhom(i,1))) / delt;
+//     }
 
-    // Looping over each unique pair
-    for (int i = 0; i < nvcz; i++) {
+//     // Looping over each unique pair
+//     for (int i = 0; i < nvcz; i++) {
 
-        // Calculating the lambda(t)+dlambda and lambda(t) values
-        lambdadt = sqrt((uvcz(i,2) / uns) * (uvcz(i,2) / uns) + (uvcz(i,3) / uts) * (uvcz(i,3) / uts));
-        lambdat = sqrt((uvcz(i,0) / uns) * (uvcz(i,0) / uns) + (uvcz(i,1) / uts) * (uvcz(i,1) / uts));
+//         // Calculating the lambda(t)+dlambda and lambda(t) values
+//         lambdadt = sqrt((uvcz(i,2) / uns) * (uvcz(i,2) / uns) + (uvcz(i,3) / uts) * (uvcz(i,3) / uts));
+//         lambdat = sqrt((uvcz(i,0) / uns) * (uvcz(i,0) / uns) + (uvcz(i,1) / uts) * (uvcz(i,1) / uts));
 
-        // Initializing and calculating lambda rate for current load step (lambdadot(t))
-        dinvars(i,0) = (lambdadt - lambdat) / delt;
+//         // Initializing and calculating lambda rate for current load step (lambdadot(t))
+//         dinvars(i,0) = (lambdadt - lambdat) / delt;
 
-        // Calculating dalpha/dt for current load step
-        if (dinvars(i,0) > 0) {
-            dadt = a1 * pow(((lambdadt + lambdat) / 2), n);
-        }
-        else {
-            dadt = 0;
-        }
+//         // Calculating dalpha/dt for current load step
+//         if (dinvars(i,0) > 0) {
+//             dadt = a1 * pow(((lambdadt + lambdat) / 2), n);
+//         }
+//         else {
+//             dadt = 0;
+//         }
 
-        // Preventing divide by zero errors in final calculation: the value is set equal to the minimum possible positive value that can be represented by a double in C++
-        if (lambdat == 0) {
-            lambdat = std::numeric_limits<double>::min();
-        }
-        if (lambdadt == 0) {
-            lambdadt = std::numeric_limits<double>::min();
-        }
+//         // Preventing divide by zero errors in final calculation: the value is set equal to the minimum possible positive value that can be represented by a double in C++
+//         if (lambdat == 0) {
+//             lambdat = std::numeric_limits<double>::min();
+//         }
+//         if (lambdadt == 0) {
+//             lambdadt = std::numeric_limits<double>::min();
+//         }
         
-        // Updating dalpha
-        dinvars(i,1) = dadt * delt;
+//         // Updating dalpha
+//         dinvars(i,1) = dadt * delt;
 
-        // Updating dsigma values for prony terms
-        for (int j = 0; j < npt; j++) {
-            dinvars(i,4 + j) = exp(-delt / Eandrhom(j,1)) * invars(i,4 + j) + Eandrhom(j,0) * Eandrhom(j,1) * invars(i,0) * (1 - exp(-delt / Eandrhom(j,1)));
-        }
+//         // Updating dsigma values for prony terms
+//         for (int j = 0; j < npt; j++) {
+//             dinvars(i,4 + j) = exp(-delt / Eandrhom(j,1)) * invars(i,4 + j) + Eandrhom(j,0) * Eandrhom(j,1) * invars(i,0) * (1 - exp(-delt / Eandrhom(j,1)));
+//         }
 
-        // Resetting sumsig and sumsigexp on each iteration of the loop prior to calculating them
-        sumsig = 0;
-        sumsigexp = 0;
+//         // Resetting sumsig and sumsigexp on each iteration of the loop prior to calculating them
+//         sumsig = 0;
+//         sumsigexp = 0;
 
-        // Calculating sigma sums and sigma product sums (the deltaE term in the residual traction) in the residual traction terms
-        for (int j = 0; j < npt; j++) {
-            sumsig += dinvars(i,4 + j);
-            sumsigexp += (1 - exp(-delt / Eandrhom(j,1))) * dinvars(i,4 + j);
-        }
+//         // Calculating sigma sums and sigma product sums (the deltaE term in the residual traction) in the residual traction terms
+//         for (int j = 0; j < npt; j++) {
+//             sumsig += dinvars(i,4 + j);
+//             sumsigexp += (1 - exp(-delt / Eandrhom(j,1))) * dinvars(i,4 + j);
+//         }
 
-        // Enforcing alpha domain limitations
-        if ((invars(i,1) + dinvars(i,1)) > 1) {
-            dinvars(i,1) = 1 - invars(i,1);
-        }
+//         // Enforcing alpha domain limitations
+//         if ((invars(i,1) + dinvars(i,1)) > 1) {
+//             dinvars(i,1) = 1 - invars(i,1);
+//         }
 
-        // Updating dtraction values for each cohesive zone along the edge
-        dinvars(i,2) = uvcz(i,2) / (uns * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * Edelt * dinvars(i,0) * delt
-            + uvcz(i,2) / (uns * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * (Einf * lambdat + sumsig)
-            - uvcz(i,0) / (uns * lambdat) * (1 - (invars(i,1))) * (Einf * lambdat + sumsig)
-            + uvcz(i,2) / (uns * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * -sumsigexp;
-        dinvars(i,3) = uvcz(i,3) / (uts * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * Edelt * dinvars(i,0) * delt
-            + uvcz(i,3) / (uts * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * (Einf * lambdat + sumsig)
-            - uvcz(i,1) / (uts * lambdat) * (1 - (invars(i,1))) * (Einf * lambdat + sumsig)
-            + uvcz(i,3) / (uts * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * -sumsigexp;
-    }
-}
+//         // Updating dtraction values for each cohesive zone along the edge
+//         dinvars(i,2) = uvcz(i,2) / (uns * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * Edelt * dinvars(i,0) * delt
+//             + uvcz(i,2) / (uns * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * (Einf * lambdat + sumsig)
+//             - uvcz(i,0) / (uns * lambdat) * (1 - (invars(i,1))) * (Einf * lambdat + sumsig)
+//             + uvcz(i,2) / (uns * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * -sumsigexp;
+//         dinvars(i,3) = uvcz(i,3) / (uts * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * Edelt * dinvars(i,0) * delt
+//             + uvcz(i,3) / (uts * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * (Einf * lambdat + sumsig)
+//             - uvcz(i,1) / (uts * lambdat) * (1 - (invars(i,1))) * (Einf * lambdat + sumsig)
+//             + uvcz(i,3) / (uts * lambdadt) * (1 - (invars(i,1) + dinvars(i,1))) * -sumsigexp;
+//     }
+// }
 
-// This function calculates the loads due to the cohesive zone tractions in the global frame of reference
-// inputs: vczorient, vczconn, nvcz, invars, dinvars, vczinfo, nodes, conn, ut, us
-// output: Fvcz (global load vector from cohesive zones), KVCZ (global stiffness contributions from cohesive zones)
-void vczloads(CArray<double> vczorient, CArray<int> vczconn, double nvcz, CArray<double> invars, CArray<double> dinvars, CArray<int> vczinfo, CArray<double> nodes, CArray<int> conn, CArray<double> ut, CArray<double> us, CArray<double> Eandrhom, int npt, double delt, double Einf, double uns, double uts, CArray<double> Fvcz,CArray<double> Kvcz) {
-    // reset Fvcz and Kvcz
-    Fvcz.set_values(0);
-    Kvcz.set_values(0);
+// // This function calculates the loads due to the cohesive zone tractions in the global frame of reference
+// // inputs: vczorient, vczconn, nvcz, invars, dinvars, vczinfo, nodes, conn, ut, us
+// // output: Fvcz (global load vector from cohesive zones), KVCZ (global stiffness contributions from cohesive zones)
+// void vczloads(CArray<double> vczorient, CArray<int> vczconn, double nvcz, CArray<double> invars, CArray<double> dinvars, CArray<int> vczinfo, CArray<double> nodes, CArray<int> conn, CArray<double> ut, CArray<double> us, CArray<double> Eandrhom, int npt, double delt, double Einf, double uns, double uts, CArray<double> Fvcz,CArray<double> Kvcz) {
+//     // reset Fvcz and Kvcz
+//     Fvcz.set_values(0);
+//     Kvcz.set_values(0);
     
-    // intermediate variables
-    auto curr = CArray <double> (8,3); // current configuration of an element
-    double gp = 0.5773502691896257;
-    auto gps = CArray <double> (4,3);
-    auto J = CArray <double> (3,3);
-    double area;
-    auto interpvals = FArray <double> (8,4);
-    auto Fn = CArray <double> (3);
-    auto Ft = CArray <double> (3);
-    double tanmag;
-    double udotn;
-    auto uglobtdt = CArray <double> (3);
-    auto tanvec = CArray <double> (3);
-    double kn;
-    double kt;
-    double alpha;
-    double beta;
-    auto kvcz = CArray <double> (6,6);
+//     // intermediate variables
+//     auto curr = CArray <double> (8,3); // current configuration of an element
+//     double gp = 0.5773502691896257;
+//     auto gps = CArray <double> (4,3);
+//     auto J = CArray <double> (3,3);
+//     double area;
+//     auto interpvals = FArray <double> (8,4);
+//     auto Fn = CArray <double> (3);
+//     auto Ft = CArray <double> (3);
+//     double tanmag;
+//     double udotn;
+//     auto uglobtdt = CArray <double> (3);
+//     auto tanvec = CArray <double> (3);
+//     double kn;
+//     double kt;
+//     double alpha;
+//     double beta;
+//     auto kvcz = CArray <double> (6,6);
 
-    // Edelt calculator for stiffness of truss element values
-    double Edelt = 0;
-    Edelt += Einf;
-    for (int i = 0; i < npt; i++) {
-        Edelt += Eandrhom(i,0) * Eandrhom(i,1) * (1 - exp(-delt / Eandrhom(i,1))) / delt;
-    }
+//     // Edelt calculator for stiffness of truss element values
+//     double Edelt = 0;
+//     Edelt += Einf;
+//     for (int i = 0; i < npt; i++) {
+//         Edelt += Eandrhom(i,0) * Eandrhom(i,1) * (1 - exp(-delt / Eandrhom(i,1))) / delt;
+//     }
 
-    // looping over each cohesive zone
-    for (int i = 0; i < nvcz; i++) {
-        // looping over each element for the cohesive zones
-        for (int j = 0; j < vczinfo.dims(1)/6; j++) {
-            // checking that the element index in vczinfo is populated with an element number
-            if (vczinfo(i,j) != -1) {
+//     // looping over each cohesive zone
+//     for (int i = 0; i < nvcz; i++) {
+//         // looping over each element for the cohesive zones
+//         for (int j = 0; j < vczinfo.dims(1)/6; j++) {
+//             // checking that the element index in vczinfo is populated with an element number
+//             if (vczinfo(i,j) != -1) {
 
-                // calculate current configuration of the element in the index
-                for (int k = 0; k < 8; k++) {
-                    for (int m = 0; m < 3; m++) {
-                        curr(k,m) = nodes(conn(vczinfo(i,j),k),m) + ut(3 * conn(vczinfo(i,j),k) + m) + us(3 * conn(vczinfo(i,j),k) + m);
-                    }
-                }
+//                 // calculate current configuration of the element in the index
+//                 for (int k = 0; k < 8; k++) {
+//                     for (int m = 0; m < 3; m++) {
+//                         curr(k,m) = nodes(conn(vczinfo(i,j),k),m) + ut(3 * conn(vczinfo(i,j),k) + m) + us(3 * conn(vczinfo(i,j),k) + m);
+//                     }
+//                 }
                 
-                // finding gauss points to loop through based on patch number
-                switch(vczinfo(i,2*vczinfo.dims(1)/6+j)){
-                case 0:
-                    gps(0,0) = -1;
-                    gps(1,0) = -1;
-                    gps(2,0) = -1;
-                    gps(3,0) = -1;
-                    gps(0,1) = -gp;
-                    gps(1,1) = gp;
-                    gps(2,1) = -gp;
-                    gps(3,1) = gp;
-                    gps(0,2) = -gp;
-                    gps(1,2) = -gp;
-                    gps(2,2) = gp;
-                    gps(3,2) = gp;
-                    break;
-                case 1:
-                    gps(0,0) = 1;
-                    gps(1,0) = 1;
-                    gps(2,0) = 1;
-                    gps(3,0) = 1;
-                    gps(0,1) = -gp;
-                    gps(1,1) = gp;
-                    gps(2,1) = -gp;
-                    gps(3,1) = gp;
-                    gps(0,2) = -gp;
-                    gps(1,2) = -gp;
-                    gps(2,2) = gp;
-                    gps(3,2) = gp;
-                    break;
-                case 2:
-                    gps(0,1) = -1;
-                    gps(1,1) = -1;
-                    gps(2,1) = -1;
-                    gps(3,1) = -1;
-                    gps(0,0) = -gp;
-                    gps(1,0) = gp;
-                    gps(2,0) = -gp;
-                    gps(3,0) = gp;
-                    gps(0,2) = -gp;
-                    gps(1,2) = -gp;
-                    gps(2,2) = gp;
-                    gps(3,2) = gp;
-                    break;
-                case 3:
-                    gps(0,1) = 1;
-                    gps(1,1) = 1;
-                    gps(2,1) = 1;
-                    gps(3,1) = 1;
-                    gps(0,0) = -gp;
-                    gps(1,0) = gp;
-                    gps(2,0) = -gp;
-                    gps(3,0) = gp;
-                    gps(0,2) = -gp;
-                    gps(1,2) = -gp;
-                    gps(2,2) = gp;
-                    gps(3,2) = gp;
-                    break;
-                case 4:
-                    gps(0,2) = -1;
-                    gps(1,2) = -1;
-                    gps(2,2) = -1;
-                    gps(3,2) = -1;
-                    gps(0,0) = -gp;
-                    gps(1,0) = gp;
-                    gps(2,0) = -gp;
-                    gps(3,0) = gp;
-                    gps(0,1) = -gp;
-                    gps(1,1) = -gp;
-                    gps(2,1) = gp;
-                    gps(3,1) = gp;
-                    break;
-                case 5:
-                    gps(0,2) = 1;
-                    gps(1,2) = 1;
-                    gps(2,2) = 1;
-                    gps(3,2) = 1;
-                    gps(0,0) = -gp;
-                    gps(1,0) = gp;
-                    gps(2,0) = -gp;
-                    gps(3,0) = gp;
-                    gps(0,1) = -gp;
-                    gps(1,1) = -gp;
-                    gps(2,1) = gp;
-                    gps(3,1) = gp;
-                    break;
-                }
+//                 // finding gauss points to loop through based on patch number
+//                 switch(vczinfo(i,2*vczinfo.dims(1)/6+j)){
+//                 case 0:
+//                     gps(0,0) = -1;
+//                     gps(1,0) = -1;
+//                     gps(2,0) = -1;
+//                     gps(3,0) = -1;
+//                     gps(0,1) = -gp;
+//                     gps(1,1) = gp;
+//                     gps(2,1) = -gp;
+//                     gps(3,1) = gp;
+//                     gps(0,2) = -gp;
+//                     gps(1,2) = -gp;
+//                     gps(2,2) = gp;
+//                     gps(3,2) = gp;
+//                     break;
+//                 case 1:
+//                     gps(0,0) = 1;
+//                     gps(1,0) = 1;
+//                     gps(2,0) = 1;
+//                     gps(3,0) = 1;
+//                     gps(0,1) = -gp;
+//                     gps(1,1) = gp;
+//                     gps(2,1) = -gp;
+//                     gps(3,1) = gp;
+//                     gps(0,2) = -gp;
+//                     gps(1,2) = -gp;
+//                     gps(2,2) = gp;
+//                     gps(3,2) = gp;
+//                     break;
+//                 case 2:
+//                     gps(0,1) = -1;
+//                     gps(1,1) = -1;
+//                     gps(2,1) = -1;
+//                     gps(3,1) = -1;
+//                     gps(0,0) = -gp;
+//                     gps(1,0) = gp;
+//                     gps(2,0) = -gp;
+//                     gps(3,0) = gp;
+//                     gps(0,2) = -gp;
+//                     gps(1,2) = -gp;
+//                     gps(2,2) = gp;
+//                     gps(3,2) = gp;
+//                     break;
+//                 case 3:
+//                     gps(0,1) = 1;
+//                     gps(1,1) = 1;
+//                     gps(2,1) = 1;
+//                     gps(3,1) = 1;
+//                     gps(0,0) = -gp;
+//                     gps(1,0) = gp;
+//                     gps(2,0) = -gp;
+//                     gps(3,0) = gp;
+//                     gps(0,2) = -gp;
+//                     gps(1,2) = -gp;
+//                     gps(2,2) = gp;
+//                     gps(3,2) = gp;
+//                     break;
+//                 case 4:
+//                     gps(0,2) = -1;
+//                     gps(1,2) = -1;
+//                     gps(2,2) = -1;
+//                     gps(3,2) = -1;
+//                     gps(0,0) = -gp;
+//                     gps(1,0) = gp;
+//                     gps(2,0) = -gp;
+//                     gps(3,0) = gp;
+//                     gps(0,1) = -gp;
+//                     gps(1,1) = -gp;
+//                     gps(2,1) = gp;
+//                     gps(3,1) = gp;
+//                     break;
+//                 case 5:
+//                     gps(0,2) = 1;
+//                     gps(1,2) = 1;
+//                     gps(2,2) = 1;
+//                     gps(3,2) = 1;
+//                     gps(0,0) = -gp;
+//                     gps(1,0) = gp;
+//                     gps(2,0) = -gp;
+//                     gps(3,0) = gp;
+//                     gps(0,1) = -gp;
+//                     gps(1,1) = -gp;
+//                     gps(2,1) = gp;
+//                     gps(3,1) = gp;
+//                     break;
+//                 }
                 
-                // jacobian calculations for the patch area
-                area = 0;
-                for (int k = 0; k < 4; k++) {
+//                 // jacobian calculations for the patch area
+//                 area = 0;
+//                 for (int k = 0; k < 4; k++) {
 
-                    // calculating jacobian
-                    MasterShapes(interpvals, gps(k,0),gps(k,1),gps(k,2));
-                    J.set_values(0);
-                    for (int m = 0; m < 3; m++) {
-                        for (int o = 0; o < 3; o++) {
-                            for (int p = 0; p < 8; p++) {
-                                J(m,o) +=  curr(p,o)*interpvals(p,m+1);
-                            }
-                        }
-                    }
+//                     // calculating jacobian
+//                     MasterShapes(interpvals, gps(k,0),gps(k,1),gps(k,2));
+//                     J.set_values(0);
+//                     for (int m = 0; m < 3; m++) {
+//                         for (int o = 0; o < 3; o++) {
+//                             for (int p = 0; p < 8; p++) {
+//                                 J(m,o) +=  curr(p,o)*interpvals(p,m+1);
+//                             }
+//                         }
+//                     }
                     
-                    // cross product of jacobian on surface to find area
-                    switch(2*vczinfo.dims(1)/6+j) {
-                    case 0:
-                        area += sqrt(pow((J(1,1)*J(2,2) - J(2,1)*J(1,2)),2) + pow((J(1,0)*J(2,2) - J(2,0)*J(1,2)),2) + pow((J(1,0)*J(2,1) - J(2,0)*J(1,1)),2));
-                        break;
-                    case 1:
-                        area += sqrt(pow((J(1,1)*J(2,2) - J(2,1)*J(1,2)),2) + pow((J(1,0)*J(2,2) - J(2,0)*J(1,2)),2) + pow((J(1,0)*J(2,1) - J(2,0)*J(1,1)),2));
-                        break;
-                    case 2:
-                        area += sqrt(pow((J(0,1)*J(2,2) - J(2,1)*J(0,2)),2) + pow((J(0,0)*J(2,2) - J(2,0)*J(0,2)),2) + pow((J(0,0)*J(2,1) - J(2,0)*J(0,1)),2));
-                        break;
-                    case 3:
-                        area += sqrt(pow((J(0,1)*J(2,2) - J(2,1)*J(0,2)),2) + pow((J(0,0)*J(2,2) - J(2,0)*J(0,2)),2) + pow((J(0,0)*J(2,1) - J(2,0)*J(0,1)),2));
-                        break;
-                    case 4:
-                        area += sqrt(pow((J(0,1)*J(1,2) - J(1,1)*J(0,2)),2) + pow((J(0,0)*J(1,2) - J(1,0)*J(0,2)),2) + pow((J(0,0)*J(1,1) - J(1,0)*J(0,1)),2));
-                        break;
-                    case 5:
-                        area += sqrt(pow((J(0,1)*J(1,2) - J(1,1)*J(0,2)),2) + pow((J(0,0)*J(1,2) - J(1,0)*J(0,2)),2) + pow((J(0,0)*J(1,1) - J(1,0)*J(0,1)),2));
-                        break;
-                    }
-                }
+//                     // cross product of jacobian on surface to find area
+//                     switch(2*vczinfo.dims(1)/6+j) {
+//                     case 0:
+//                         area += sqrt(pow((J(1,1)*J(2,2) - J(2,1)*J(1,2)),2) + pow((J(1,0)*J(2,2) - J(2,0)*J(1,2)),2) + pow((J(1,0)*J(2,1) - J(2,0)*J(1,1)),2));
+//                         break;
+//                     case 1:
+//                         area += sqrt(pow((J(1,1)*J(2,2) - J(2,1)*J(1,2)),2) + pow((J(1,0)*J(2,2) - J(2,0)*J(1,2)),2) + pow((J(1,0)*J(2,1) - J(2,0)*J(1,1)),2));
+//                         break;
+//                     case 2:
+//                         area += sqrt(pow((J(0,1)*J(2,2) - J(2,1)*J(0,2)),2) + pow((J(0,0)*J(2,2) - J(2,0)*J(0,2)),2) + pow((J(0,0)*J(2,1) - J(2,0)*J(0,1)),2));
+//                         break;
+//                     case 3:
+//                         area += sqrt(pow((J(0,1)*J(2,2) - J(2,1)*J(0,2)),2) + pow((J(0,0)*J(2,2) - J(2,0)*J(0,2)),2) + pow((J(0,0)*J(2,1) - J(2,0)*J(0,1)),2));
+//                         break;
+//                     case 4:
+//                         area += sqrt(pow((J(0,1)*J(1,2) - J(1,1)*J(0,2)),2) + pow((J(0,0)*J(1,2) - J(1,0)*J(0,2)),2) + pow((J(0,0)*J(1,1) - J(1,0)*J(0,1)),2));
+//                         break;
+//                     case 5:
+//                         area += sqrt(pow((J(0,1)*J(1,2) - J(1,1)*J(0,2)),2) + pow((J(0,0)*J(1,2) - J(1,0)*J(0,2)),2) + pow((J(0,0)*J(1,1) - J(1,0)*J(0,1)),2));
+//                         break;
+//                     }
+//                 }
                 
-                // calculating normal force vector
-                Fn(0) = (invars(i,2)+dinvars(i,2))*(area/4)*vczorient(i,3);
-                Fn(1) = (invars(i,2)+dinvars(i,2))*(area/4)*vczorient(i,4);
-                Fn(2) = (invars(i,2)+dinvars(i,2))*(area/4)*vczorient(i,5);
+//                 // calculating normal force vector
+//                 Fn(0) = (invars(i,2)+dinvars(i,2))*(area/4)*vczorient(i,3);
+//                 Fn(1) = (invars(i,2)+dinvars(i,2))*(area/4)*vczorient(i,4);
+//                 Fn(2) = (invars(i,2)+dinvars(i,2))*(area/4)*vczorient(i,5);
                 
-                // calculating tangent vector     u_t = u - (u dot n)n
-                uglobtdt(0) = (nodes(vczconn(i,1),0) + ut(3*vczconn(i,1)) + us(3*vczconn(i,1))) - (nodes(vczconn(i,0),0) + ut(3*vczconn(i,0)) + us(3*vczconn(i,0)));
-                uglobtdt(1) = (nodes(vczconn(i,1),1) + ut(3*vczconn(i,1)+1) + us(3*vczconn(i,1)+1)) - (nodes(vczconn(i,0),1) + ut(3*vczconn(i,0)+1) + us(3*vczconn(i,0)+1));
-                uglobtdt(2) = (nodes(vczconn(i,1),2) + ut(3*vczconn(i,1)+2) + us(3*vczconn(i,1)+2)) - (nodes(vczconn(i,0),2) + ut(3*vczconn(i,0)+2) + us(3*vczconn(i,0)+2));
-                udotn = uglobtdt(0)*vczorient(i,3) + uglobtdt(1)*vczorient(i,4) + uglobtdt(2)*vczorient(i,5);
-                tanvec(0) = uglobtdt(0) - udotn*vczorient(i,3);
-                tanvec(1) = uglobtdt(1) - udotn*vczorient(i,4);
-                tanvec(2) = uglobtdt(2) - udotn*vczorient(i,5);
-                tanmag = sqrt(tanvec(0)*tanvec(0) + tanvec(1)*tanvec(1) + tanvec(2)*tanvec(2));
-                if (tanmag != 0) {
-                    tanvec(0) /= tanmag;
-                    tanvec(1) /= tanmag;
-                    tanvec(2) /= tanmag;
-                }
+//                 // calculating tangent vector     u_t = u - (u dot n)n
+//                 uglobtdt(0) = (nodes(vczconn(i,1),0) + ut(3*vczconn(i,1)) + us(3*vczconn(i,1))) - (nodes(vczconn(i,0),0) + ut(3*vczconn(i,0)) + us(3*vczconn(i,0)));
+//                 uglobtdt(1) = (nodes(vczconn(i,1),1) + ut(3*vczconn(i,1)+1) + us(3*vczconn(i,1)+1)) - (nodes(vczconn(i,0),1) + ut(3*vczconn(i,0)+1) + us(3*vczconn(i,0)+1));
+//                 uglobtdt(2) = (nodes(vczconn(i,1),2) + ut(3*vczconn(i,1)+2) + us(3*vczconn(i,1)+2)) - (nodes(vczconn(i,0),2) + ut(3*vczconn(i,0)+2) + us(3*vczconn(i,0)+2));
+//                 udotn = uglobtdt(0)*vczorient(i,3) + uglobtdt(1)*vczorient(i,4) + uglobtdt(2)*vczorient(i,5);
+//                 tanvec(0) = uglobtdt(0) - udotn*vczorient(i,3);
+//                 tanvec(1) = uglobtdt(1) - udotn*vczorient(i,4);
+//                 tanvec(2) = uglobtdt(2) - udotn*vczorient(i,5);
+//                 tanmag = sqrt(tanvec(0)*tanvec(0) + tanvec(1)*tanvec(1) + tanvec(2)*tanvec(2));
+//                 if (tanmag != 0) {
+//                     tanvec(0) /= tanmag;
+//                     tanvec(1) /= tanmag;
+//                     tanvec(2) /= tanmag;
+//                 }
 
-                // calculating tangent force vector
-                Ft(0) = (invars(i,3)+dinvars(i,3))*(area/4)*tanvec(0);
-                Ft(1) = (invars(i,3)+dinvars(i,3))*(area/4)*tanvec(1);
-                Ft(2) = (invars(i,3)+dinvars(i,3))*(area/4)*tanvec(2);
-                //prarr(Ft);
-                // adding to global force vector
-                Fvcz(3*vczconn(i,0)) += Fn(0) + Ft(0);
-                Fvcz(3*vczconn(i,0)+1) += Fn(1) + Ft(1);
-                Fvcz(3*vczconn(i,0)+2) += Fn(2) + Ft(2);
-                Fvcz(3*vczconn(i,1)) -= Fn(0) + Ft(0);
-                Fvcz(3*vczconn(i,1)+1) -= Fn(1) + Ft(1);
-                Fvcz(3*vczconn(i,1)+2) -= Fn(2) + Ft(2);
+//                 // calculating tangent force vector
+//                 Ft(0) = (invars(i,3)+dinvars(i,3))*(area/4)*tanvec(0);
+//                 Ft(1) = (invars(i,3)+dinvars(i,3))*(area/4)*tanvec(1);
+//                 Ft(2) = (invars(i,3)+dinvars(i,3))*(area/4)*tanvec(2);
+//                 //prarr(Ft);
+//                 // adding to global force vector
+//                 Fvcz(3*vczconn(i,0)) += Fn(0) + Ft(0);
+//                 Fvcz(3*vczconn(i,0)+1) += Fn(1) + Ft(1);
+//                 Fvcz(3*vczconn(i,0)+2) += Fn(2) + Ft(2);
+//                 Fvcz(3*vczconn(i,1)) -= Fn(0) + Ft(0);
+//                 Fvcz(3*vczconn(i,1)+1) -= Fn(1) + Ft(1);
+//                 Fvcz(3*vczconn(i,1)+2) -= Fn(2) + Ft(2);
 
-                // calculating rotation angles of truss element
-                // if u_x is zero it causes divide by zero errors
-                if (uglobtdt(0) == 0) {
+//                 // calculating rotation angles of truss element
+//                 // if u_x is zero it causes divide by zero errors
+//                 if (uglobtdt(0) == 0) {
                     
-                    if (uglobtdt(1) == 0) {
-                        // u_x and u_y both zero then no rotation wrt z axis
-                        alpha = 0;
-                    } else if (uglobtdt(1) > 0) {
-                        // u_x is zero and u_y is positive, truss orientation wrt z axis is 90 degrees (straight up)
-                        alpha = M_PI/2;
-                    } else {
-                        // u_x is zero and u_y is negative, truss orientation wrt z axis is 270 degrees (straight down)
-                        alpha = 3*M_PI/2;
-                    }
+//                     if (uglobtdt(1) == 0) {
+//                         // u_x and u_y both zero then no rotation wrt z axis
+//                         alpha = 0;
+//                     } else if (uglobtdt(1) > 0) {
+//                         // u_x is zero and u_y is positive, truss orientation wrt z axis is 90 degrees (straight up)
+//                         alpha = M_PI/2;
+//                     } else {
+//                         // u_x is zero and u_y is negative, truss orientation wrt z axis is 270 degrees (straight down)
+//                         alpha = 3*M_PI/2;
+//                     }
 
-                    if (uglobtdt(2) == 0) {
-                        // u_x and u_z both zero then no rotation wrt y axis
-                        beta = 0;
-                    } else if (uglobtdt(2) > 0) {
-                        // u_x is zero and u_y is positive, truss orientation wrt y axis is 90 degrees (straight up)
-                        beta = 3*M_PI/2;
-                    } else {
-                        // u_x is zero and u_y is negative, truss orientation wrt y axis is 270 degrees (straight down)
-                        beta = M_PI/2;
-                    }
+//                     if (uglobtdt(2) == 0) {
+//                         // u_x and u_z both zero then no rotation wrt y axis
+//                         beta = 0;
+//                     } else if (uglobtdt(2) > 0) {
+//                         // u_x is zero and u_y is positive, truss orientation wrt y axis is 90 degrees (straight up)
+//                         beta = 3*M_PI/2;
+//                     } else {
+//                         // u_x is zero and u_y is negative, truss orientation wrt y axis is 270 degrees (straight down)
+//                         beta = M_PI/2;
+//                     }
 
-                } else if (uglobtdt(0) > 0) {
-                    // if u_x is positive then the orientation wrt z and y axes is in either quadrant 1 or 4 of unit circle
-                    alpha = atan(uglobtdt(1)/uglobtdt(0));
-                    beta = atan(-uglobtdt(2)/uglobtdt(0));
-                } else {
-                    // if u_x is negative then the orientation wrt z and y axes is in either quadrant 2 or 3 of unit circle
-                    // this case requires a correction to account for full 360 rotation due to range limits of arctan
-                    alpha = atan(uglobtdt(1)/uglobtdt(0))+M_PI;
-                    beta = atan(-uglobtdt(2)/uglobtdt(0))+M_PI;
-                }
-                /* if (uglobtdt(0) != 0) {
-                    alpha = atan(uglobtdt(1)/uglobtdt(0));
-                    beta = atan(-uglobtdt(2)/uglobtdt(0));
-                } else {
-                    alpha = 0;
-                    beta = 0;
-                } */
-                //printf("a = %f    b = %f\n\n",alpha*180/3.14159,beta*180/3.14159);
+//                 } else if (uglobtdt(0) > 0) {
+//                     // if u_x is positive then the orientation wrt z and y axes is in either quadrant 1 or 4 of unit circle
+//                     alpha = atan(uglobtdt(1)/uglobtdt(0));
+//                     beta = atan(-uglobtdt(2)/uglobtdt(0));
+//                 } else {
+//                     // if u_x is negative then the orientation wrt z and y axes is in either quadrant 2 or 3 of unit circle
+//                     // this case requires a correction to account for full 360 rotation due to range limits of arctan
+//                     alpha = atan(uglobtdt(1)/uglobtdt(0))+M_PI;
+//                     beta = atan(-uglobtdt(2)/uglobtdt(0))+M_PI;
+//                 }
+//                 /* if (uglobtdt(0) != 0) {
+//                     alpha = atan(uglobtdt(1)/uglobtdt(0));
+//                     beta = atan(-uglobtdt(2)/uglobtdt(0));
+//                 } else {
+//                     alpha = 0;
+//                     beta = 0;
+//                 } */
+//                 //printf("a = %f    b = %f\n\n",alpha*180/3.14159,beta*180/3.14159);
 
-                // calculating directional stiffness in local frame
-                // note: only one tangent value needed bc of assumption urs == uss
-                kn = (1 - (invars(i,1) + dinvars(i,1))) * Edelt * (area/4) / uns;
-                kt = (1 - (invars(i,1) + dinvars(i,1))) * Edelt * (area/4) / uts;
+//                 // calculating directional stiffness in local frame
+//                 // note: only one tangent value needed bc of assumption urs == uss
+//                 kn = (1 - (invars(i,1) + dinvars(i,1))) * Edelt * (area/4) / uns;
+//                 kt = (1 - (invars(i,1) + dinvars(i,1))) * Edelt * (area/4) / uts;
 
-                // populating local stiffness matrix based on +ccw turns
-                // first rotation about x2 axis (beta), second rotation about x3 axis (alpha)
-                kvcz(0,0) = cos(alpha)*cos(alpha)*cos(beta)*cos(beta)*kn + (cos(alpha)*cos(alpha)*sin(beta)*sin(beta) + sin(alpha)*sin(alpha))*kt;
-                kvcz(0,1) = cos(alpha)*cos(beta)*cos(beta)*sin(alpha)*kn + (cos(alpha)*sin(alpha)*sin(beta)*sin(beta) - cos(alpha)*sin(alpha))*kt;
-                kvcz(0,2) = (-cos(alpha)*cos(beta)*sin(beta))*kn + cos(alpha)*cos(beta)*sin(beta)*kt;
-                kvcz(0,3) = (-cos(alpha)*cos(alpha)*cos(beta)*cos(beta))*kn + (- cos(alpha)*cos(alpha)*sin(beta)*sin(beta) - sin(alpha)*sin(alpha))*kt;
-                kvcz(0,4) = (-cos(alpha)*cos(beta)*cos(beta)*sin(alpha))*kn + (cos(alpha)*sin(alpha) - cos(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
-                kvcz(0,5) = cos(alpha)*cos(beta)*sin(beta)*kn + (-cos(alpha)*cos(beta)*sin(beta))*kt;
-                kvcz(1,1) = cos(beta)*cos(beta)*sin(alpha)*sin(alpha)*kn + (cos(alpha)*cos(alpha) + sin(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
-                kvcz(1,2) = (-cos(beta)*sin(alpha)*sin(beta))*kn + cos(beta)*sin(alpha)*sin(beta)*kt;
-                kvcz(1,3) = (-cos(alpha)*cos(beta)*cos(beta)*sin(alpha))*kn + (cos(alpha)*sin(alpha) - cos(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
-                kvcz(1,4) = (-cos(beta)*cos(beta)*sin(alpha)*sin(alpha))*kn + (- cos(alpha)*cos(alpha) - sin(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
-                kvcz(1,5) = cos(beta)*sin(alpha)*sin(beta)*kn + (-cos(beta)*sin(alpha)*sin(beta))*kt;
-                kvcz(2,2) = sin(beta)*sin(beta)*kn + cos(beta)*cos(beta)*kt;
-                kvcz(2,3) = cos(alpha)*cos(beta)*sin(beta)*kn + (-cos(alpha)*cos(beta)*sin(beta))*kt;
-                kvcz(2,4) = cos(beta)*sin(alpha)*sin(beta)*kn + (-cos(beta)*sin(alpha)*sin(beta))*kt;
-                kvcz(2,5) = (-sin(beta)*sin(beta))*kn + (-cos(beta)*cos(beta))*kt;
-                kvcz(3,3) = cos(alpha)*cos(alpha)*cos(beta)*cos(beta)*kn + (cos(alpha)*cos(alpha)*sin(beta)*sin(beta) + sin(alpha)*sin(alpha))*kt;
-                kvcz(3,4) = cos(alpha)*cos(beta)*cos(beta)*sin(alpha)*kn + (cos(alpha)*sin(alpha)*sin(beta)*sin(beta) - cos(alpha)*sin(alpha))*kt;
-                kvcz(3,5) = (-cos(alpha)*cos(beta)*sin(beta))*kn + cos(alpha)*cos(beta)*sin(beta)*kt;
-                kvcz(4,4) = cos(beta)*cos(beta)*sin(alpha)*sin(alpha)*kn + (cos(alpha)*cos(alpha) + sin(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
-                kvcz(4,5) = (-cos(beta)*sin(alpha)*sin(beta))*kn + cos(beta)*sin(alpha)*sin(beta)*kt;
-                kvcz(5,5) = sin(beta)*sin(beta)*kn + cos(beta)*cos(beta)*kt;
+//                 // populating local stiffness matrix based on +ccw turns
+//                 // first rotation about x2 axis (beta), second rotation about x3 axis (alpha)
+//                 kvcz(0,0) = cos(alpha)*cos(alpha)*cos(beta)*cos(beta)*kn + (cos(alpha)*cos(alpha)*sin(beta)*sin(beta) + sin(alpha)*sin(alpha))*kt;
+//                 kvcz(0,1) = cos(alpha)*cos(beta)*cos(beta)*sin(alpha)*kn + (cos(alpha)*sin(alpha)*sin(beta)*sin(beta) - cos(alpha)*sin(alpha))*kt;
+//                 kvcz(0,2) = (-cos(alpha)*cos(beta)*sin(beta))*kn + cos(alpha)*cos(beta)*sin(beta)*kt;
+//                 kvcz(0,3) = (-cos(alpha)*cos(alpha)*cos(beta)*cos(beta))*kn + (- cos(alpha)*cos(alpha)*sin(beta)*sin(beta) - sin(alpha)*sin(alpha))*kt;
+//                 kvcz(0,4) = (-cos(alpha)*cos(beta)*cos(beta)*sin(alpha))*kn + (cos(alpha)*sin(alpha) - cos(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
+//                 kvcz(0,5) = cos(alpha)*cos(beta)*sin(beta)*kn + (-cos(alpha)*cos(beta)*sin(beta))*kt;
+//                 kvcz(1,1) = cos(beta)*cos(beta)*sin(alpha)*sin(alpha)*kn + (cos(alpha)*cos(alpha) + sin(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
+//                 kvcz(1,2) = (-cos(beta)*sin(alpha)*sin(beta))*kn + cos(beta)*sin(alpha)*sin(beta)*kt;
+//                 kvcz(1,3) = (-cos(alpha)*cos(beta)*cos(beta)*sin(alpha))*kn + (cos(alpha)*sin(alpha) - cos(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
+//                 kvcz(1,4) = (-cos(beta)*cos(beta)*sin(alpha)*sin(alpha))*kn + (- cos(alpha)*cos(alpha) - sin(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
+//                 kvcz(1,5) = cos(beta)*sin(alpha)*sin(beta)*kn + (-cos(beta)*sin(alpha)*sin(beta))*kt;
+//                 kvcz(2,2) = sin(beta)*sin(beta)*kn + cos(beta)*cos(beta)*kt;
+//                 kvcz(2,3) = cos(alpha)*cos(beta)*sin(beta)*kn + (-cos(alpha)*cos(beta)*sin(beta))*kt;
+//                 kvcz(2,4) = cos(beta)*sin(alpha)*sin(beta)*kn + (-cos(beta)*sin(alpha)*sin(beta))*kt;
+//                 kvcz(2,5) = (-sin(beta)*sin(beta))*kn + (-cos(beta)*cos(beta))*kt;
+//                 kvcz(3,3) = cos(alpha)*cos(alpha)*cos(beta)*cos(beta)*kn + (cos(alpha)*cos(alpha)*sin(beta)*sin(beta) + sin(alpha)*sin(alpha))*kt;
+//                 kvcz(3,4) = cos(alpha)*cos(beta)*cos(beta)*sin(alpha)*kn + (cos(alpha)*sin(alpha)*sin(beta)*sin(beta) - cos(alpha)*sin(alpha))*kt;
+//                 kvcz(3,5) = (-cos(alpha)*cos(beta)*sin(beta))*kn + cos(alpha)*cos(beta)*sin(beta)*kt;
+//                 kvcz(4,4) = cos(beta)*cos(beta)*sin(alpha)*sin(alpha)*kn + (cos(alpha)*cos(alpha) + sin(alpha)*sin(alpha)*sin(beta)*sin(beta))*kt;
+//                 kvcz(4,5) = (-cos(beta)*sin(alpha)*sin(beta))*kn + cos(beta)*sin(alpha)*sin(beta)*kt;
+//                 kvcz(5,5) = sin(beta)*sin(beta)*kn + cos(beta)*cos(beta)*kt;
 
-                // symmetric fill
-                kvcz(1,0) = kvcz(0,1);
-                kvcz(2,0) = kvcz(0,2);
-                kvcz(2,1) = kvcz(1,2);
-                kvcz(3,0) = kvcz(0,3);
-                kvcz(3,1) = kvcz(1,3);
-                kvcz(3,2) = kvcz(2,3);
-                kvcz(4,0) = kvcz(0,4);
-                kvcz(4,1) = kvcz(1,4);
-                kvcz(4,2) = kvcz(2,4);
-                kvcz(4,3) = kvcz(3,4);
-                kvcz(5,0) = kvcz(0,5);
-                kvcz(5,1) = kvcz(1,5);
-                kvcz(5,2) = kvcz(2,5);
-                kvcz(5,3) = kvcz(3,5);
-                kvcz(5,4) = kvcz(4,5);
+//                 // symmetric fill
+//                 kvcz(1,0) = kvcz(0,1);
+//                 kvcz(2,0) = kvcz(0,2);
+//                 kvcz(2,1) = kvcz(1,2);
+//                 kvcz(3,0) = kvcz(0,3);
+//                 kvcz(3,1) = kvcz(1,3);
+//                 kvcz(3,2) = kvcz(2,3);
+//                 kvcz(4,0) = kvcz(0,4);
+//                 kvcz(4,1) = kvcz(1,4);
+//                 kvcz(4,2) = kvcz(2,4);
+//                 kvcz(4,3) = kvcz(3,4);
+//                 kvcz(5,0) = kvcz(0,5);
+//                 kvcz(5,1) = kvcz(1,5);
+//                 kvcz(5,2) = kvcz(2,5);
+//                 kvcz(5,3) = kvcz(3,5);
+//                 kvcz(5,4) = kvcz(4,5);
 
-                // populating Kvcz based on vcz connectivity
-                for (int m = 0; m < 2; m++) {
-                    for (int o = 0; o < 2; o++) {
-                        for (int p = 0; p < 3; p++) {
-                            for (int q = 0; q < 3; q++) {
-                                Kvcz(3*vczconn(i,m)+p,3*vczconn(i,o)+q) += kvcz(3*m + p, 3*o + q); 
-                            }
-                        }
-                    }
-                }
+//                 // populating Kvcz based on vcz connectivity
+//                 for (int m = 0; m < 2; m++) {
+//                     for (int o = 0; o < 2; o++) {
+//                         for (int p = 0; p < 3; p++) {
+//                             for (int q = 0; q < 3; q++) {
+//                                 Kvcz(3*vczconn(i,m)+p,3*vczconn(i,o)+q) += kvcz(3*m + p, 3*o + q); 
+//                             }
+//                         }
+//                     }
+//                 }
 
-            }
-        }
-    }
+//             }
+//         }
+//     }
 
-}
+// }
 
-// This function calls all necessary functions to update the vcz behavior based on a displacement field
-// inputs: nodes, conn, ne, ut, us, vczconn, vczinfo, nvcz, interpvals, vczorient, ulocvcz, npt, vcz material parameters (Einf, a1, n, Eandrhom, uns, uts), delt, invars, dinvars
-// outputs: Fvcz (global load vector due to vczs) and Kvcz (global stiffness matrix to characterize vczs)
-void vczupdate(CArray<double> nodes, CArray<int> conn, int ne, CArray<double> ut, CArray<double> us, CArray<int> vczconn, CArray<int> vczinfo, int nvcz, FArray<double> interpvals, CArray<double> vczorient, CArray<double> ulocvcz, int npt, double Einf, double a1, double n, CArray<double> Eandrhom, double uns, double uts, double delt, CArray<double> invars, CArray<double> dinvars, CArray<double> Fvcz, CArray<double> Kvcz) {
-    // find global orientation normal vectors
-    oriented(nodes,conn,ne,nvcz,ut,us,vczinfo,interpvals,vczorient);
-    // map displacement into local normal and tangent frame of reference;
-    ucmap(nodes,ut,us,vczorient,vczconn,nvcz,ulocvcz);
-    printf(" ");
-    // updating interal variables of cohesive zones
-    internalvars(ulocvcz,delt,Einf,a1,n,Eandrhom,uns,uts,npt,nvcz,invars,dinvars);
-    // populating global force vector and stiffness matrix
-    vczloads(vczorient,vczconn,nvcz,invars,dinvars,vczinfo,nodes,conn,ut,us,Eandrhom,npt,delt,Einf,uns,uts,Fvcz,Kvcz);
-}
+// // This function calls all necessary functions to update the vcz behavior based on a displacement field
+// // inputs: nodes, conn, ne, ut, us, vczconn, vczinfo, nvcz, interpvals, vczorient, ulocvcz, npt, vcz material parameters (Einf, a1, n, Eandrhom, uns, uts), delt, invars, dinvars
+// // outputs: Fvcz (global load vector due to vczs) and Kvcz (global stiffness matrix to characterize vczs)
+// void vczupdate(CArray<double> nodes, CArray<int> conn, int ne, CArray<double> ut, CArray<double> us, CArray<int> vczconn, CArray<int> vczinfo, int nvcz, FArray<double> interpvals, CArray<double> vczorient, CArray<double> ulocvcz, int npt, double Einf, double a1, double n, CArray<double> Eandrhom, double uns, double uts, double delt, CArray<double> invars, CArray<double> dinvars, CArray<double> Fvcz, CArray<double> Kvcz) {
+//     // find global orientation normal vectors
+//     oriented(nodes,conn,ne,nvcz,ut,us,vczinfo,interpvals,vczorient);
+//     // map displacement into local normal and tangent frame of reference;
+//     ucmap(nodes,ut,us,vczorient,vczconn,nvcz,ulocvcz);
+//     printf(" ");
+//     // updating interal variables of cohesive zones
+//     internalvars(ulocvcz,delt,Einf,a1,n,Eandrhom,uns,uts,npt,nvcz,invars,dinvars);
+//     // populating global force vector and stiffness matrix
+//     vczloads(vczorient,vczconn,nvcz,invars,dinvars,vczinfo,nodes,conn,ut,us,Eandrhom,npt,delt,Einf,uns,uts,Fvcz,Kvcz);
+// }
 
-int main()
-{
-    // Initializing input variables from first 2 lines of input file then populating them with readFirstLines()
-    int NNODE;
-    int NEL;
-    int NDBC;
-    int NPL;
-    int NTL;
-    int BCFLAG;
-    int NLS;
-    double E;
-    double nu;
-    double t;
-    double tol;
-    int NUP;
-    double a1;
-    double n;
-    double Einf;
-    double delt;
-    int NPT;
-    double uns;
-    double uts;
-    std::string filename = "Input.txt";
-    readFirstLines(filename, NNODE, NEL, NDBC, NPL, NTL, BCFLAG, NLS, E, nu, t, tol, NUP, a1, n, Einf, delt, NPT, uns, uts);
+// int main()
+// {
+//     // Initializing input variables from first 2 lines of input file then populating them with readFirstLines()
+//     int NNODE;
+//     int NEL;
+//     int NDBC;
+//     int NPL;
+//     int NTL;
+//     int BCFLAG;
+//     int NLS;
+//     double E;
+//     double nu;
+//     double t;
+//     double tol;
+//     int NUP;
+//     double a1;
+//     double n;
+//     double Einf;
+//     double delt;
+//     int NPT;
+//     double uns;
+//     double uts;
+//     std::string filename = "Input.txt";
+//     readFirstLines(filename, NNODE, NEL, NDBC, NPL, NTL, BCFLAG, NLS, E, nu, t, tol, NUP, a1, n, Einf, delt, NPT, uns, uts);
 
-    // Initializing input variables based upon sizes from readFirstLines output then populating them with readTheRest()
-    auto NODES = CArray <double> (NNODE,3);
-    auto CONN = CArray <int> (NEL,8);
-    auto Eandrhom = CArray <double> (NPT,2);
-    auto UPs = CArray <int> (NUP,2);
-    int DBCcols;
-    int PLScols;
-    int TLScols;
-    if (BCFLAG == 0) {
-        DBCcols = 3;
-        PLScols = 3;
-        TLScols = 5;
-    }
-    else {
-        DBCcols = 2+NLS;
-        PLScols = 2+NLS;
-        TLScols = 2+(3*NLS);
-    }
-    auto DBCS = CArray <double> (NDBC, DBCcols);
-    auto PLS = CArray <double> (NPL, PLScols);
-    auto TLS = CArray <double> (NTL, TLScols);
-    readTheRest(filename, NUP, NPT, NNODE, NEL, NDBC, NPL, NTL, BCFLAG, NLS, NODES, CONN, DBCS, PLS, TLS, Eandrhom, UPs);
+//     // Initializing input variables based upon sizes from readFirstLines output then populating them with readTheRest()
+//     auto NODES = CArray <double> (NNODE,3);
+//     auto CONN = CArray <int> (NEL,8);
+//     auto Eandrhom = CArray <double> (NPT,2);
+//     auto UPs = CArray <int> (NUP,2);
+//     int DBCcols;
+//     int PLScols;
+//     int TLScols;
+//     if (BCFLAG == 0) {
+//         DBCcols = 3;
+//         PLScols = 3;
+//         TLScols = 5;
+//     }
+//     else {
+//         DBCcols = 2+NLS;
+//         PLScols = 2+NLS;
+//         TLScols = 2+(3*NLS);
+//     }
+//     auto DBCS = CArray <double> (NDBC, DBCcols);
+//     auto PLS = CArray <double> (NPL, PLScols);
+//     auto TLS = CArray <double> (NTL, TLScols);
+//     readTheRest(filename, NUP, NPT, NNODE, NEL, NDBC, NPL, NTL, BCFLAG, NLS, NODES, CONN, DBCS, PLS, TLS, Eandrhom, UPs);
     
-    // Defining gauss point interpolation function values
-    // (gp__ where V means volume, p# means patch number, and the final number is that subset gauss point)
-    // 2 pt gauss quadrature (linear element) so V spans 0-7, p# spans 0-5, each patch spans 0-3, and weights are always 1
-    double gp = 0.5773502691896257;
-    auto gpV0 = FArray <double> (8,4);
-    MasterShapes(gpV0,-gp,-gp,-gp);
-    auto gpV1 = FArray <double> (8,4);
-    MasterShapes(gpV1,-gp,-gp,gp);
-    auto gpV2 = FArray <double> (8,4);
-    MasterShapes(gpV2,gp,-gp,gp);
-    auto gpV3 = FArray <double> (8,4);
-    MasterShapes(gpV3,gp,-gp,-gp);
-    auto gpV4 = FArray <double> (8,4);
-    MasterShapes(gpV4,-gp,gp,-gp);
-    auto gpV5 = FArray <double> (8,4);
-    MasterShapes(gpV5,-gp,gp,gp);
-    auto gpV6 = FArray <double> (8,4);
-    MasterShapes(gpV6,gp,gp,gp);
-    auto gpV7 = FArray <double> (8,4);
-    MasterShapes(gpV7,gp,gp,-gp);
+//     // Defining gauss point interpolation function values
+//     // (gp__ where V means volume, p# means patch number, and the final number is that subset gauss point)
+//     // 2 pt gauss quadrature (linear element) so V spans 0-7, p# spans 0-5, each patch spans 0-3, and weights are always 1
+//     double gp = 0.5773502691896257;
+//     auto gpV0 = FArray <double> (8,4);
+//     MasterShapes(gpV0,-gp,-gp,-gp);
+//     auto gpV1 = FArray <double> (8,4);
+//     MasterShapes(gpV1,-gp,-gp,gp);
+//     auto gpV2 = FArray <double> (8,4);
+//     MasterShapes(gpV2,gp,-gp,gp);
+//     auto gpV3 = FArray <double> (8,4);
+//     MasterShapes(gpV3,gp,-gp,-gp);
+//     auto gpV4 = FArray <double> (8,4);
+//     MasterShapes(gpV4,-gp,gp,-gp);
+//     auto gpV5 = FArray <double> (8,4);
+//     MasterShapes(gpV5,-gp,gp,gp);
+//     auto gpV6 = FArray <double> (8,4);
+//     MasterShapes(gpV6,gp,gp,gp);
+//     auto gpV7 = FArray <double> (8,4);
+//     MasterShapes(gpV7,gp,gp,-gp);
     
-    // patch definition: [0, 1, 2, 3, 4, 5] = [xi1=-1, xi1=+1, xi2=-1, xi2=+1, xi3=-1, xi3=+1]
-    auto gpp00 = FArray <double> (8,4);
-    MasterShapes(gpp00,-1,-gp,-gp);
-    auto gpp01 = FArray <double> (8,4);
-    MasterShapes(gpp01,-1,-gp,gp);
-    auto gpp02 = FArray <double> (8,4);
-    MasterShapes(gpp02,-1,gp,-gp);
-    auto gpp03 = FArray <double> (8,4);
-    MasterShapes(gpp03,-1,gp,gp);
+//     // patch definition: [0, 1, 2, 3, 4, 5] = [xi1=-1, xi1=+1, xi2=-1, xi2=+1, xi3=-1, xi3=+1]
+//     auto gpp00 = FArray <double> (8,4);
+//     MasterShapes(gpp00,-1,-gp,-gp);
+//     auto gpp01 = FArray <double> (8,4);
+//     MasterShapes(gpp01,-1,-gp,gp);
+//     auto gpp02 = FArray <double> (8,4);
+//     MasterShapes(gpp02,-1,gp,-gp);
+//     auto gpp03 = FArray <double> (8,4);
+//     MasterShapes(gpp03,-1,gp,gp);
 
-    auto gpp10 = FArray <double> (8,4);
-    MasterShapes(gpp10,1,-gp,-gp);
-    auto gpp11 = FArray <double> (8,4);
-    MasterShapes(gpp11,1,-gp,gp);
-    auto gpp12 = FArray <double> (8,4);
-    MasterShapes(gpp12,1,gp,-gp);
-    auto gpp13 = FArray <double> (8,4);
-    MasterShapes(gpp13,1,gp,gp);
+//     auto gpp10 = FArray <double> (8,4);
+//     MasterShapes(gpp10,1,-gp,-gp);
+//     auto gpp11 = FArray <double> (8,4);
+//     MasterShapes(gpp11,1,-gp,gp);
+//     auto gpp12 = FArray <double> (8,4);
+//     MasterShapes(gpp12,1,gp,-gp);
+//     auto gpp13 = FArray <double> (8,4);
+//     MasterShapes(gpp13,1,gp,gp);
 
-    auto gpp20 = FArray <double> (8,4);
-    MasterShapes(gpp20,-gp,-1,-gp);
-    auto gpp21 = FArray <double> (8,4);
-    MasterShapes(gpp21,-gp,-1,gp);
-    auto gpp22 = FArray <double> (8,4);
-    MasterShapes(gpp22,gp,-1,-gp);
-    auto gpp23 = FArray <double> (8,4);
-    MasterShapes(gpp23,gp,-1,gp);
+//     auto gpp20 = FArray <double> (8,4);
+//     MasterShapes(gpp20,-gp,-1,-gp);
+//     auto gpp21 = FArray <double> (8,4);
+//     MasterShapes(gpp21,-gp,-1,gp);
+//     auto gpp22 = FArray <double> (8,4);
+//     MasterShapes(gpp22,gp,-1,-gp);
+//     auto gpp23 = FArray <double> (8,4);
+//     MasterShapes(gpp23,gp,-1,gp);
 
-    auto gpp30 = FArray <double> (8,4);
-    MasterShapes(gpp30,-gp,1,-gp);
-    auto gpp31 = FArray <double> (8,4);
-    MasterShapes(gpp31,-gp,1,gp);
-    auto gpp32 = FArray <double> (8,4);
-    MasterShapes(gpp32,gp,1,-gp);
-    auto gpp33 = FArray <double> (8,4);
-    MasterShapes(gpp33,gp,1,gp);
+//     auto gpp30 = FArray <double> (8,4);
+//     MasterShapes(gpp30,-gp,1,-gp);
+//     auto gpp31 = FArray <double> (8,4);
+//     MasterShapes(gpp31,-gp,1,gp);
+//     auto gpp32 = FArray <double> (8,4);
+//     MasterShapes(gpp32,gp,1,-gp);
+//     auto gpp33 = FArray <double> (8,4);
+//     MasterShapes(gpp33,gp,1,gp);
 
-    auto gpp40 = FArray <double> (8,4);
-    MasterShapes(gpp40,-gp,-gp,-1);
-    auto gpp41 = FArray <double> (8,4);
-    MasterShapes(gpp41,gp,-gp,-1);
-    auto gpp42 = FArray <double> (8,4);
-    MasterShapes(gpp42,-gp,gp,-1);
-    auto gpp43 = FArray <double> (8,4);
-    MasterShapes(gpp43,gp,gp,-1);
+//     auto gpp40 = FArray <double> (8,4);
+//     MasterShapes(gpp40,-gp,-gp,-1);
+//     auto gpp41 = FArray <double> (8,4);
+//     MasterShapes(gpp41,gp,-gp,-1);
+//     auto gpp42 = FArray <double> (8,4);
+//     MasterShapes(gpp42,-gp,gp,-1);
+//     auto gpp43 = FArray <double> (8,4);
+//     MasterShapes(gpp43,gp,gp,-1);
 
-    auto gpp50 = FArray <double> (8,4);
-    MasterShapes(gpp50,-gp,-gp,1);
-    auto gpp51 = FArray <double> (8,4);
-    MasterShapes(gpp51,gp,-gp,1);
-    auto gpp52 = FArray <double> (8,4);
-    MasterShapes(gpp52,-gp,gp,1);
-    auto gpp53 = FArray <double> (8,4);
-    MasterShapes(gpp53,gp,gp,1);
+//     auto gpp50 = FArray <double> (8,4);
+//     MasterShapes(gpp50,-gp,-gp,1);
+//     auto gpp51 = FArray <double> (8,4);
+//     MasterShapes(gpp51,gp,-gp,1);
+//     auto gpp52 = FArray <double> (8,4);
+//     MasterShapes(gpp52,-gp,gp,1);
+//     auto gpp53 = FArray <double> (8,4);
+//     MasterShapes(gpp53,gp,gp,1);
 
-    // calculating C matrix for linear elastic bulk elements
-    CArray <double> CMat = CMaterial(E,nu);
+//     // calculating C matrix for linear elastic bulk elements
+//     CArray <double> CMat = CMaterial(E,nu);
     
-    // Initializing necessary arrays and variables to be used during load step -> elements nested loops:
-    // elcoords 8x3, Kg 3NNx3NN, Fg 3NNx1, F02g 3NNx1, F01g 3NNx1, ut 3NNx1, us 3NNx1, dus 3NNx1, Kel 24x24, F01el 24x1,
-    // uel 8x3, S01 6x1, E01 3x3, gradu 3x3, detJ, dpsig 8x3
-    auto elcoords = CArray <double> (8,3);
-    auto Kg = CArray <double> (3*NNODE,3*NNODE);
-    auto Fg = CArray <double> (3*NNODE);
-    auto F02g = CArray <double> (3*NNODE);
-    auto F01g = CArray <double> (3*NNODE);
-    auto ut = CArray <double> (3*NNODE);
-    auto us = CArray <double> (3*NNODE);
-    auto dus = CArray <double> (3*NNODE);
-    auto Kel = CArray <double> (24,24);
-    auto F01el = CArray <double> (24);
-    auto uel = CArray <double> (8,3);
-    auto S01 = CArray <double> (6);
-    auto E01 = CArray <double> (3,3);
-    auto gradu = CArray <double> (3,3);
-    double detJ;
-    auto dpsig = CArray <double> (8,3);
+//     // Initializing necessary arrays and variables to be used during load step -> elements nested loops:
+//     // elcoords 8x3, Kg 3NNx3NN, Fg 3NNx1, F02g 3NNx1, F01g 3NNx1, ut 3NNx1, us 3NNx1, dus 3NNx1, Kel 24x24, F01el 24x1,
+//     // uel 8x3, S01 6x1, E01 3x3, gradu 3x3, detJ, dpsig 8x3
+//     auto elcoords = CArray <double> (8,3);
+//     auto Kg = CArray <double> (3*NNODE,3*NNODE);
+//     auto Fg = CArray <double> (3*NNODE);
+//     auto F02g = CArray <double> (3*NNODE);
+//     auto F01g = CArray <double> (3*NNODE);
+//     auto ut = CArray <double> (3*NNODE);
+//     auto us = CArray <double> (3*NNODE);
+//     auto dus = CArray <double> (3*NNODE);
+//     auto Kel = CArray <double> (24,24);
+//     auto F01el = CArray <double> (24);
+//     auto uel = CArray <double> (8,3);
+//     auto S01 = CArray <double> (6);
+//     auto E01 = CArray <double> (3,3);
+//     auto gradu = CArray <double> (3,3);
+//     double detJ;
+//     auto dpsig = CArray <double> (8,3);
 
-    // Initialize matrices that see +=
-    Kg.set_values(0);
-    Fg.set_values(0);
-    F02g.set_values(0);
-    F01g.set_values(0);
-    ut.set_values(0);
-    us.set_values(0);
-    dus.set_values(0);
-    Kel.set_values(0);
-    F01el.set_values(0);
+//     // Initialize matrices that see +=
+//     Kg.set_values(0);
+//     Fg.set_values(0);
+//     F02g.set_values(0);
+//     F01g.set_values(0);
+//     ut.set_values(0);
+//     us.set_values(0);
+//     dus.set_values(0);
+//     Kel.set_values(0);
+//     F01el.set_values(0);
 
-    // calling for mesh preprocessing to handle viscoelastic cohesive zones
-    auto vczconn = CArray <int> (NUP,2);
-    auto interpvals = FArray <double> (8,4);
-    CArray <int> vczinfo = VCZmeshpreprocess(NODES,CONN,NEL,NUP,UPs,interpvals);
+//     // calling for mesh preprocessing to handle viscoelastic cohesive zones
+//     auto vczconn = CArray <int> (NUP,2);
+//     auto interpvals = FArray <double> (8,4);
+//     CArray <int> vczinfo = VCZmeshpreprocess(NODES,CONN,NEL,NUP,UPs,interpvals);
 
-    // allocations for arrays needed to handle cohesive zone behavior
-    auto invars = CArray<double> (NUP,4+NPT);
-    auto dinvars = CArray<double> (NUP,4+NPT);
-    invars.set_values(0);
-    dinvars.set_values(0);
-    auto vczorient = CArray <double> (NUP,6);
-    auto ulocvcz = CArray <double> (NUP,4);
-    auto Fvcz = CArray<double> (3*NNODE);
-    auto Kvcz = CArray<double> (3*NNODE,3*NNODE);
+//     // allocations for arrays needed to handle cohesive zone behavior
+//     auto invars = CArray<double> (NUP,4+NPT);
+//     auto dinvars = CArray<double> (NUP,4+NPT);
+//     invars.set_values(0);
+//     dinvars.set_values(0);
+//     auto vczorient = CArray <double> (NUP,6);
+//     auto ulocvcz = CArray <double> (NUP,4);
+//     auto Fvcz = CArray<double> (3*NNODE);
+//     auto Kvcz = CArray<double> (3*NNODE,3*NNODE);
 
-    // Defining boundary condition stepping arrays
-    int DBsize;
-    int PLsize;
-    int TLsize;
-    // BCFLAG: 0 for uniform stepping, 1 for custom stepping
-    // defining number of columns in step arrays
-    if (BCFLAG == 0) {
-        DBsize = 1;
-        PLsize = 1;
-        TLsize = 3;
-    }
-    else {
-        DBsize = NLS;
-        PLsize = NLS;
-        TLsize = 3*NLS;
-    }
-    // initializing step arrays
-    auto DBstep = CArray <double> (NDBC,DBsize);
-    auto PLstep = CArray <double> (NPL,PLsize);
-    auto TLstep = CArray <double> (NTL,TLsize);
-    // populating step arrays
-    if (BCFLAG == 0) {
-        for (int i = 0; i < NDBC; i++) {
-            DBstep(i,0) = DBCS(i,2) / NLS;
-        }
+//     // Defining boundary condition stepping arrays
+//     int DBsize;
+//     int PLsize;
+//     int TLsize;
+//     // BCFLAG: 0 for uniform stepping, 1 for custom stepping
+//     // defining number of columns in step arrays
+//     if (BCFLAG == 0) {
+//         DBsize = 1;
+//         PLsize = 1;
+//         TLsize = 3;
+//     }
+//     else {
+//         DBsize = NLS;
+//         PLsize = NLS;
+//         TLsize = 3*NLS;
+//     }
+//     // initializing step arrays
+//     auto DBstep = CArray <double> (NDBC,DBsize);
+//     auto PLstep = CArray <double> (NPL,PLsize);
+//     auto TLstep = CArray <double> (NTL,TLsize);
+//     // populating step arrays
+//     if (BCFLAG == 0) {
+//         for (int i = 0; i < NDBC; i++) {
+//             DBstep(i,0) = DBCS(i,2) / NLS;
+//         }
 
-        for (int i = 0; i < NPL; i++) {
-            PLstep(i,0) = PLS(i,2) / NLS;
-        }
+//         for (int i = 0; i < NPL; i++) {
+//             PLstep(i,0) = PLS(i,2) / NLS;
+//         }
 
-        for (int i = 0; i < NTL; i++) {
-            TLstep(i,0) = TLS(i,2) / NLS;
-            TLstep(i,1) = TLS(i,3) / NLS;
-            TLstep(i,2) = TLS(i,4) / NLS;
-        }
-    }
-    else {
-        for (int i = 0; i < NDBC; i++) {
-            for (int j = 0; j < NLS; j++) {
-                if (j == 0) {
-                    // accounting for first load step assuming that the body is initially undeformed
-                    DBstep(i,j) = DBCS(i,2);
-                }
-                else {
-                    DBstep(i,j) = DBCS(i,j + 2) - DBCS(i,j + 1);
-                }
-            }
-        }
+//         for (int i = 0; i < NTL; i++) {
+//             TLstep(i,0) = TLS(i,2) / NLS;
+//             TLstep(i,1) = TLS(i,3) / NLS;
+//             TLstep(i,2) = TLS(i,4) / NLS;
+//         }
+//     }
+//     else {
+//         for (int i = 0; i < NDBC; i++) {
+//             for (int j = 0; j < NLS; j++) {
+//                 if (j == 0) {
+//                     // accounting for first load step assuming that the body is initially undeformed
+//                     DBstep(i,j) = DBCS(i,2);
+//                 }
+//                 else {
+//                     DBstep(i,j) = DBCS(i,j + 2) - DBCS(i,j + 1);
+//                 }
+//             }
+//         }
 
-        for (int i = 0; i < NPL; i++) {
-            for (int j = 0; j < NLS; j++) {
-                if (j == 0) {
-                    // accounting for first load step assuming that the body is initially undeformed
-                    PLstep(i,j) = PLS(i,2);
-                }
-                else {
-                    PLstep(i,j) = PLS(i,j + 2) - PLS(i,j + 1);
-                }
-            }
-        }
+//         for (int i = 0; i < NPL; i++) {
+//             for (int j = 0; j < NLS; j++) {
+//                 if (j == 0) {
+//                     // accounting for first load step assuming that the body is initially undeformed
+//                     PLstep(i,j) = PLS(i,2);
+//                 }
+//                 else {
+//                     PLstep(i,j) = PLS(i,j + 2) - PLS(i,j + 1);
+//                 }
+//             }
+//         }
 
-        for (int i = 0; i < NTL; i++) {
-            for (int j = 0; j < NLS; j++) {
-                for (int k = 0; k < 3; k++) {
-                    if (j == 0) {
-                        // accounting for first load step assuming that the body is initially undeformed
-                        TLstep(i,k) = TLS(i,2 + k);
-                    }
-                    else {
-                        TLstep(i,3 * j + k) = TLS(i,3 * j + k + 2) - TLS(i,3 * (j - 1) + k + 2);
-                    }
-                }
-            }
-        }
-    }
+//         for (int i = 0; i < NTL; i++) {
+//             for (int j = 0; j < NLS; j++) {
+//                 for (int k = 0; k < 3; k++) {
+//                     if (j == 0) {
+//                         // accounting for first load step assuming that the body is initially undeformed
+//                         TLstep(i,k) = TLS(i,2 + k);
+//                     }
+//                     else {
+//                         TLstep(i,3 * j + k) = TLS(i,3 * j + k + 2) - TLS(i,3 * (j - 1) + k + 2);
+//                     }
+//                 }
+//             }
+//         }
+//     }
 
-    // Defining arrays for applying boundary conditions on the current load step
-    // PL02 carries current point loads, TL02 carries current traction loads, DB02 carries current prescribed displacement
-    // DBiter carries zeros for maintaining that the displacement step vector satifies DB02 during iteration
-    auto PL02 = CArray <double> (NPL,3);
-    auto TL02 = CArray <double> (NTL,5);
-    auto DB12 = CArray <double> (NDBC,3);
-    auto DBiter = CArray <double> (NDBC,3);
-    PL02.set_values(0);
-    TL02.set_values(0);
-    DB12.set_values(0);
-    DBiter.set_values(0);
-    // pulling node numbers and dofs for point loads and dirichlet, pulling element number and patch number for traction loads
-    for (int i = 0; i < NPL; i++) {
-        for (int j = 0; j < 2; j++) {
-            PL02(i,j) = PLS(i,j);
-        }
-    }
-    for (int i = 0; i < NTL; i++) {
-        for (int j = 0; j < 2; j++) {
-            TL02(i,j) = TLS(i,j);
-        }
-    }
-    for (int i = 0; i < NDBC; i++) {
-        for (int j = 0; j < 2; j++) {
-            DB12(i,j) = DBCS(i,j);
-            DBiter(i,j) = DBCS(i,j);
-        }
-    }
+//     // Defining arrays for applying boundary conditions on the current load step
+//     // PL02 carries current point loads, TL02 carries current traction loads, DB02 carries current prescribed displacement
+//     // DBiter carries zeros for maintaining that the displacement step vector satifies DB02 during iteration
+//     auto PL02 = CArray <double> (NPL,3);
+//     auto TL02 = CArray <double> (NTL,5);
+//     auto DB12 = CArray <double> (NDBC,3);
+//     auto DBiter = CArray <double> (NDBC,3);
+//     PL02.set_values(0);
+//     TL02.set_values(0);
+//     DB12.set_values(0);
+//     DBiter.set_values(0);
+//     // pulling node numbers and dofs for point loads and dirichlet, pulling element number and patch number for traction loads
+//     for (int i = 0; i < NPL; i++) {
+//         for (int j = 0; j < 2; j++) {
+//             PL02(i,j) = PLS(i,j);
+//         }
+//     }
+//     for (int i = 0; i < NTL; i++) {
+//         for (int j = 0; j < 2; j++) {
+//             TL02(i,j) = TLS(i,j);
+//         }
+//     }
+//     for (int i = 0; i < NDBC; i++) {
+//         for (int j = 0; j < 2; j++) {
+//             DB12(i,j) = DBCS(i,j);
+//             DBiter(i,j) = DBCS(i,j);
+//         }
+//     }
 
-    // finding global location of gauss points
-    CArray <double> gpcoords = gpglob(NEL,gp,elcoords,uel,NODES,CONN,ut,us,gpV0,gpV1,gpV2,gpV3,gpV4,gpV5,gpV6,gpV7);
+//     // finding global location of gauss points
+//     CArray <double> gpcoords = gpglob(NEL,gp,elcoords,uel,NODES,CONN,ut,us,gpV0,gpV1,gpV2,gpV3,gpV4,gpV5,gpV6,gpV7);
 
-    // Opening Output file
-    std::ofstream outputFile("output.txt");
+//     // Opening Output file
+//     std::ofstream outputFile("output.txt");
 
-    // Writing initial configuration to output file
-    outputFile << "Initial Configuration:" << "\n" << "Node     x     y     z" << "\n";
-    for (int i = 0; i < NNODE; i++) {
-        outputFile << i << "     " << NODES(i,0) << "     " << NODES(i,1) << "     " << NODES(i,2) << "\n";
-    }
-    outputFile << "\n";
+//     // Writing initial configuration to output file
+//     outputFile << "Initial Configuration:" << "\n" << "Node     x     y     z" << "\n";
+//     for (int i = 0; i < NNODE; i++) {
+//         outputFile << i << "     " << NODES(i,0) << "     " << NODES(i,1) << "     " << NODES(i,2) << "\n";
+//     }
+//     outputFile << "\n";
 
-    // Initializing numerator and denominator of enorm equation for simpler calculation
-    double nnorm = 0;
-    double dnorm = 0;
+//     // Initializing numerator and denominator of enorm equation for simpler calculation
+//     double nnorm = 0;
+//     double dnorm = 0;
 
-    // Defining max allowed iterations for a single load step and euclidean norm
-    // Euclidean norm of displacement is initialized at greater than tolerance
-    // so that the first check does not fail and the convergence loop will run
-    int maxiter = 100;
-    double enorm = 2 * tol;
+//     // Defining max allowed iterations for a single load step and euclidean norm
+//     // Euclidean norm of displacement is initialized at greater than tolerance
+//     // so that the first check does not fail and the convergence loop will run
+//     int maxiter = 100;
+//     double enorm = 2 * tol;
 
-    // Beginning of load step loop
-    for (int i = 0; i < NLS; i++) {
-        // Updating boundary conditions for the current step from 01 to 02
-        if (BCFLAG == 0) {
-            for (int j = 0; j < NDBC; j++) {
-                DB12(j,2) = DBstep(j,0);
-            }
-            for (int j = 0; j < NPL; j++) {
-                PL02(j,2) += PLstep(j,0);
-            }
-            for (int j = 0; j < NTL; j++) {
-                TL02(j,2) += TLstep(j,0);
-                TL02(j,3) += TLstep(j,1);
-                TL02(j,4) += TLstep(j,2);
-            }
-        }
-        else {
-            for (int j = 0; j < NDBC; j++) {
-                DB12(j,2) = DBstep(j,i);
-            }
-            for (int j = 0; j < NPL; j++) {
-                PL02(j,2) += PLstep(j,i);
-            }
-            for (int j = 0; j < NTL; j++) {
-                for (int k = 0; k < 3; k++) {
-                    TL02(j,2 + k) += TLstep(j,3 * i + k);
-                }
-            }
-        }
+//     // Beginning of load step loop
+//     for (int i = 0; i < NLS; i++) {
+//         // Updating boundary conditions for the current step from 01 to 02
+//         if (BCFLAG == 0) {
+//             for (int j = 0; j < NDBC; j++) {
+//                 DB12(j,2) = DBstep(j,0);
+//             }
+//             for (int j = 0; j < NPL; j++) {
+//                 PL02(j,2) += PLstep(j,0);
+//             }
+//             for (int j = 0; j < NTL; j++) {
+//                 TL02(j,2) += TLstep(j,0);
+//                 TL02(j,3) += TLstep(j,1);
+//                 TL02(j,4) += TLstep(j,2);
+//             }
+//         }
+//         else {
+//             for (int j = 0; j < NDBC; j++) {
+//                 DB12(j,2) = DBstep(j,i);
+//             }
+//             for (int j = 0; j < NPL; j++) {
+//                 PL02(j,2) += PLstep(j,i);
+//             }
+//             for (int j = 0; j < NTL; j++) {
+//                 for (int k = 0; k < 3; k++) {
+//                     TL02(j,2 + k) += TLstep(j,3 * i + k);
+//                 }
+//             }
+//         }
 
-        // Applying the loads for this load step to define F02g for the load step
-        PointLoad(F02g, PL02, NPL);
-        for (int j = 0; j < NTL; j++) {
-            ElemCoords(elcoords, uel, static_cast<int>(TL02(j,0)), NODES, CONN, ut, us);
-            switch(static_cast<int>(TL02(j,1))) {
-            case 0:
-                Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp00, gpp01, gpp02, gpp03);
-                break;
-            case 1:
-                Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp10, gpp11, gpp12, gpp13);
-                break;
-            case 2:
-                Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp20, gpp21, gpp22, gpp23);
-                break;
-            case 3:
-                Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp30, gpp31, gpp32, gpp33);
-                break;
-            case 4:
-                Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp40, gpp41, gpp42, gpp43);
-                break;
-            case 5:
-                Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp50, gpp51, gpp52, gpp53);
-                break;
-            }
-        }
+//         // Applying the loads for this load step to define F02g for the load step
+//         PointLoad(F02g, PL02, NPL);
+//         for (int j = 0; j < NTL; j++) {
+//             ElemCoords(elcoords, uel, static_cast<int>(TL02(j,0)), NODES, CONN, ut, us);
+//             switch(static_cast<int>(TL02(j,1))) {
+//             case 0:
+//                 Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp00, gpp01, gpp02, gpp03);
+//                 break;
+//             case 1:
+//                 Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp10, gpp11, gpp12, gpp13);
+//                 break;
+//             case 2:
+//                 Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp20, gpp21, gpp22, gpp23);
+//                 break;
+//             case 3:
+//                 Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp30, gpp31, gpp32, gpp33);
+//                 break;
+//             case 4:
+//                 Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp40, gpp41, gpp42, gpp43);
+//                 break;
+//             case 5:
+//                 Traction(F02g, static_cast<int>(TL02(j,0)), static_cast<int>(TL02(j,1)), CONN, elcoords, TL02(j,2), TL02(j,3), TL02(j,4), gpp50, gpp51, gpp52, gpp53);
+//                 break;
+//             }
+//         }
 
-        // resetting dinvars for the load step
-        dinvars.set_values(0);
+//         // resetting dinvars for the load step
+//         dinvars.set_values(0);
         
-        // initializing cohesive zone vector and array for first iteration
-        vczupdate(NODES,CONN,NEL,ut,us,UPs,vczinfo,NUP,interpvals,vczorient,ulocvcz,NPT,Einf,a1,n,Eandrhom,uns,uts,delt,invars,dinvars,Fvcz,Kvcz);
+//         // initializing cohesive zone vector and array for first iteration
+//         vczupdate(NODES,CONN,NEL,ut,us,UPs,vczinfo,NUP,interpvals,vczorient,ulocvcz,NPT,Einf,a1,n,Eandrhom,uns,uts,delt,invars,dinvars,Fvcz,Kvcz);
         
-        // enforcing dirichlet conditions on us
-        for (int k = 0; k < NDBC; k++) {
-            us(3 * static_cast<int>(DB12(k,0)) + static_cast<int>(DB12(k,1))) = DB12(k,2);
-        }
+//         // enforcing dirichlet conditions on us
+//         for (int k = 0; k < NDBC; k++) {
+//             us(3 * static_cast<int>(DB12(k,0)) + static_cast<int>(DB12(k,1))) = DB12(k,2);
+//         }
 
-        // Resetting Euclidean norm before initiating convergence check loop so that
-        // the subsequent load steps after the first do not fail to run
-        enorm = 2 * tol;
+//         // Resetting Euclidean norm before initiating convergence check loop so that
+//         // the subsequent load steps after the first do not fail to run
+//         enorm = 2 * tol;
 
-        // Beginning of convergence check loop
-        for (int j = 0; j < maxiter; j++) {
-            // Checking for convergence
-            if (enorm < tol) {
-                // uncomment to print iteration number to console
-                //printf("j is %i\n", j);
-                break;
-            }
+//         // Beginning of convergence check loop
+//         for (int j = 0; j < maxiter; j++) {
+//             // Checking for convergence
+//             if (enorm < tol) {
+//                 // uncomment to print iteration number to console
+//                 //printf("j is %i\n", j);
+//                 break;
+//             }
             
-            //printf("LS is %i\nIT is %i\n\n",i,j);
+//             //printf("LS is %i\nIT is %i\n\n",i,j);
 
-            // Resetting global arrays
-            Kg.set_values(0);
-            F01g.set_values(0);
-            Fg.set_values(0);
+//             // Resetting global arrays
+//             Kg.set_values(0);
+//             F01g.set_values(0);
+//             Fg.set_values(0);
 
-            // Resetting enorm variables
-            nnorm = 0;
-            dnorm = 0;
+//             // Resetting enorm variables
+//             nnorm = 0;
+//             dnorm = 0;
 
-            // Beginning of element loop
-            for (int k = 0; k < NEL; k++) {
-                // Pulling element geometry
-                ElemCoords(elcoords, uel, k, NODES, CONN, ut, us);
+//             // Beginning of element loop
+//             for (int k = 0; k < NEL; k++) {
+//                 // Pulling element geometry
+//                 ElemCoords(elcoords, uel, k, NODES, CONN, ut, us);
 
-                // Resetting element arrays
-                Kel.set_values(0);
-                F01el.set_values(0);
+//                 // Resetting element arrays
+//                 Kel.set_values(0);
+//                 F01el.set_values(0);
 
-                // Calculating element matrices
-                // Each gauss point is added to overall element matrices and so doesn't need to be reset between function calls
-                Gradients(dpsig, gradu, detJ, gpV0, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV1, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV2, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV3, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV4, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV5, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV6, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
-                Gradients(dpsig, gradu, detJ, gpV7, elcoords, uel, S01, E01, CMat);
-                ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 // Calculating element matrices
+//                 // Each gauss point is added to overall element matrices and so doesn't need to be reset between function calls
+//                 Gradients(dpsig, gradu, detJ, gpV0, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV1, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV2, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV3, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV4, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV5, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV6, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
+//                 Gradients(dpsig, gradu, detJ, gpV7, elcoords, uel, S01, E01, CMat);
+//                 ElemMats(Kel,F01el,dpsig,gradu,detJ,elcoords,uel,S01,CMat);
                 
-                // Assembly to global matrices
-                for (int m = 0; m < 8; m++) {
-                    for (int o = 0; o < 8; o++) {
-                        Kg(3*CONN(k,m),3*CONN(k,o)) += Kel(3*m,3*o);
-                        Kg(3*CONN(k,m),3*CONN(k,o)+1) += Kel(3*m,3*o + 1);
-                        Kg(3*CONN(k,m),3*CONN(k,o)+2) += Kel(3*m,3*o + 2);
-                        Kg(3*CONN(k,m)+1,3*CONN(k,o)) += Kel(3*m+1,3*o);
-                        Kg(3*CONN(k,m)+1,3*CONN(k,o)+1) += Kel(3*m+1,3*o + 1);
-                        Kg(3*CONN(k,m)+1,3*CONN(k,o)+2) += Kel(3*m+1,3*o + 2);
-                        Kg(3*CONN(k,m)+2,3*CONN(k,o)) += Kel(3*m+2,3*o);
-                        Kg(3*CONN(k,m)+2,3*CONN(k,o)+1) += Kel(3*m+2,3*o + 1);
-                        Kg(3*CONN(k,m)+2,3*CONN(k,o)+2) += Kel(3*m+2,3*o + 2);
-                    }
-                }
-                for (int m = 0; m < 8; m++) {
-                    F01g(3*CONN(k,m)) += F01el(3*m);
-                    F01g(3*CONN(k,m) + 1) += F01el(3*m + 1);
-                    F01g(3*CONN(k,m) + 2) += F01el(3*m + 2);
-                }
-            }
+//                 // Assembly to global matrices
+//                 for (int m = 0; m < 8; m++) {
+//                     for (int o = 0; o < 8; o++) {
+//                         Kg(3*CONN(k,m),3*CONN(k,o)) += Kel(3*m,3*o);
+//                         Kg(3*CONN(k,m),3*CONN(k,o)+1) += Kel(3*m,3*o + 1);
+//                         Kg(3*CONN(k,m),3*CONN(k,o)+2) += Kel(3*m,3*o + 2);
+//                         Kg(3*CONN(k,m)+1,3*CONN(k,o)) += Kel(3*m+1,3*o);
+//                         Kg(3*CONN(k,m)+1,3*CONN(k,o)+1) += Kel(3*m+1,3*o + 1);
+//                         Kg(3*CONN(k,m)+1,3*CONN(k,o)+2) += Kel(3*m+1,3*o + 2);
+//                         Kg(3*CONN(k,m)+2,3*CONN(k,o)) += Kel(3*m+2,3*o);
+//                         Kg(3*CONN(k,m)+2,3*CONN(k,o)+1) += Kel(3*m+2,3*o + 1);
+//                         Kg(3*CONN(k,m)+2,3*CONN(k,o)+2) += Kel(3*m+2,3*o + 2);
+//                     }
+//                 }
+//                 for (int m = 0; m < 8; m++) {
+//                     F01g(3*CONN(k,m)) += F01el(3*m);
+//                     F01g(3*CONN(k,m) + 1) += F01el(3*m + 1);
+//                     F01g(3*CONN(k,m) + 2) += F01el(3*m + 2);
+//                 }
+//             }
 
-            // adding vcz stiffness contributions
-            for (int k = 0; k < 3*NNODE; k++) {
-                for (int m = 0; m < 3*NNODE; m++) {
-                    Kg(k,m) += Kvcz(k,m);
-                }
-            }
+//             // adding vcz stiffness contributions
+//             for (int k = 0; k < 3*NNODE; k++) {
+//                 for (int m = 0; m < 3*NNODE; m++) {
+//                     Kg(k,m) += Kvcz(k,m);
+//                 }
+//             }
             
-            // Forming full Fg
-            for (int k = 0; k < 3 * NNODE; k++) {
-                Fg(k) = F02g(k) - F01g(k) + Fvcz(k);
-            }
+//             // Forming full Fg
+//             for (int k = 0; k < 3 * NNODE; k++) {
+//                 Fg(k) = F02g(k) - F01g(k) + Fvcz(k);
+//             }
             
-            // Applying Dirichlet boundary conditions
-            Dirichlet(Kg,Fg,DBiter,NDBC,NNODE);
+//             // Applying Dirichlet boundary conditions
+//             Dirichlet(Kg,Fg,DBiter,NDBC,NNODE);
 
-            // Solving system of equations
-            GaussElim(Kg,Fg,dus);
+//             // Solving system of equations
+//             GaussElim(Kg,Fg,dus);
             
-            // updating us
-            for (int k = 0; k < 3 * NNODE; k++) {
-                us(k) += dus(k);
-            }
+//             // updating us
+//             for (int k = 0; k < 3 * NNODE; k++) {
+//                 us(k) += dus(k);
+//             }
 
-            // updating vcz for next iteration
-            vczupdate(NODES,CONN,NEL,ut,us,UPs,vczinfo,NUP,interpvals,vczorient,ulocvcz,NPT,Einf,a1,n,Eandrhom,uns,uts,delt,invars,dinvars,Fvcz,Kvcz);
+//             // updating vcz for next iteration
+//             vczupdate(NODES,CONN,NEL,ut,us,UPs,vczinfo,NUP,interpvals,vczorient,ulocvcz,NPT,Einf,a1,n,Eandrhom,uns,uts,delt,invars,dinvars,Fvcz,Kvcz);
 
-            // solving for error norm
-            for (int k = 0; k < 3 * NNODE; k++) {
-                nnorm += dus(k)*dus(k);
-                dnorm += us(k)*us(k);
-            }
-            enorm = sqrt(nnorm/dnorm);
+//             // solving for error norm
+//             for (int k = 0; k < 3 * NNODE; k++) {
+//                 nnorm += dus(k)*dus(k);
+//                 dnorm += us(k)*us(k);
+//             }
+//             enorm = sqrt(nnorm/dnorm);
 
-        }
-        // updating total displacement
-        for (int k = 0; k < 3 * NNODE; k++) {
-            ut(k) += us(k);
-        }
+//         }
+//         // updating total displacement
+//         for (int k = 0; k < 3 * NNODE; k++) {
+//             ut(k) += us(k);
+//         }
 
-        // reset displacement step and force vector that holds tractions and point loads
-        us.set_values(0);
-        F02g.set_values(0);
+//         // reset displacement step and force vector that holds tractions and point loads
+//         us.set_values(0);
+//         F02g.set_values(0);
 
-        // Updating internal variables post load step convergence
-        for (int j = 0; j < NUP; j++) {
-            invars(j,0) = dinvars(j,0);
-            invars(j,1) += dinvars(j,1);
-            invars(j,2) += dinvars(j,2);
-            invars(j,3) += dinvars(j,3);
-            for (int k = 0; k < NPT; k++) {
-                invars(j,4 + k) = dinvars(j,4 + k);
-            }
-        }
+//         // Updating internal variables post load step convergence
+//         for (int j = 0; j < NUP; j++) {
+//             invars(j,0) = dinvars(j,0);
+//             invars(j,1) += dinvars(j,1);
+//             invars(j,2) += dinvars(j,2);
+//             invars(j,3) += dinvars(j,3);
+//             for (int k = 0; k < NPT; k++) {
+//                 invars(j,4 + k) = dinvars(j,4 + k);
+//             }
+//         }
 
-        // printing cohesive zone values for output checking (probably should add to output file in so way at some point?)
-        /* for (int j = 0; j < 1; j++) {
-            printf("%f     %f\n",invars(j,1),invars(j,2));
-        } */
-        printf("%f     %f\n",invars(0,1),invars(0,2));
-        //std::cout << invars(0,1) << "     " << invars(0,2) << std::endl;
-        //std::cout << invars.dims(0) << "     " << invars.dims(1) << std::endl;
-        //printf("\n");
-        //prarr(invars);
+//         // printing cohesive zone values for output checking (probably should add to output file in so way at some point?)
+//         /* for (int j = 0; j < 1; j++) {
+//             printf("%f     %f\n",invars(j,1),invars(j,2));
+//         } */
+//         printf("%f     %f\n",invars(0,1),invars(0,2));
+//         //std::cout << invars(0,1) << "     " << invars(0,2) << std::endl;
+//         //std::cout << invars.dims(0) << "     " << invars.dims(1) << std::endl;
+//         //printf("\n");
+//         //prarr(invars);
 
 
-        // Post processing and writing to output
-        // Outputting displacement field
-        outputFile << "Load Step " << i << ":" << "\n";
-        outputFile << "Total Displacement:" << "\n" << "Node     x           y              z" << "\n";
-        for (int j = 0; j < NNODE; j++) {
-            outputFile << j << "     " << std::setprecision(2) << std::scientific << ut(3 * j) << "     " << ut(3 * j + 1) << "     " << ut(3 * j + 2) << "\n";
-        }
-        // Outputting strain field
-        outputFile << "\n" << "x          y          z          Exx           Eyy            Ezz            Exy          Exz         Eyz" << "\n";
-        for (int j = 0; j < NEL; j++) {
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV0,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,0) << "     " << gpcoords(j,1) << "     " << gpcoords(j,2) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV1,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,3) << "     " << gpcoords(j,4) << "     " << gpcoords(j,5) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV2,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,6) << "     " << gpcoords(j,7) << "     " << gpcoords(j,8) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV3,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,9) << "     " << gpcoords(j,10) << "     " << gpcoords(j,11) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV4,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,12) << "     " << gpcoords(j,13) << "     " << gpcoords(j,14) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV5,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,15) << "     " << gpcoords(j,16) << "     " << gpcoords(j,17) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV6,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,18) << "     " << gpcoords(j,19) << "     " << gpcoords(j,20) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV7,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,21) << "     " << gpcoords(j,22) << "     " << gpcoords(j,23) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
-        }
-        // Outputting stress field
-        outputFile << "\n" << "x          y          z          Sxx           Syy            Szz             Sxy           Sxz          Syz" << "\n";
-        for (int j = 0; j < NEL; j++) {
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV0,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,0) << "     " << gpcoords(j,1) << "     " << gpcoords(j,2) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV1,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,3) << "     " << gpcoords(j,4) << "     " << gpcoords(j,5) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV2,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,6) << "     " << gpcoords(j,7) << "     " << gpcoords(j,8) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV3,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,9) << "     " << gpcoords(j,10) << "     " << gpcoords(j,11) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV4,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,12) << "     " << gpcoords(j,13) << "     " << gpcoords(j,14) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV5,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,15) << "     " << gpcoords(j,16) << "     " << gpcoords(j,17) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV6,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,18) << "     " << gpcoords(j,19) << "     " << gpcoords(j,20) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-            postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV7,S01,E01,CMat);
-            outputFile << std::setprecision(4) << std::fixed << gpcoords(j,21) << "     " << gpcoords(j,22) << "     " << gpcoords(j,23) << "     ";
-            outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
-        }
-    }
-}
+//         // Post processing and writing to output
+//         // Outputting displacement field
+//         outputFile << "Load Step " << i << ":" << "\n";
+//         outputFile << "Total Displacement:" << "\n" << "Node     x           y              z" << "\n";
+//         for (int j = 0; j < NNODE; j++) {
+//             outputFile << j << "     " << std::setprecision(2) << std::scientific << ut(3 * j) << "     " << ut(3 * j + 1) << "     " << ut(3 * j + 2) << "\n";
+//         }
+//         // Outputting strain field
+//         outputFile << "\n" << "x          y          z          Exx           Eyy            Ezz            Exy          Exz         Eyz" << "\n";
+//         for (int j = 0; j < NEL; j++) {
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV0,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,0) << "     " << gpcoords(j,1) << "     " << gpcoords(j,2) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV1,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,3) << "     " << gpcoords(j,4) << "     " << gpcoords(j,5) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV2,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,6) << "     " << gpcoords(j,7) << "     " << gpcoords(j,8) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV3,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,9) << "     " << gpcoords(j,10) << "     " << gpcoords(j,11) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV4,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,12) << "     " << gpcoords(j,13) << "     " << gpcoords(j,14) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV5,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,15) << "     " << gpcoords(j,16) << "     " << gpcoords(j,17) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV6,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,18) << "     " << gpcoords(j,19) << "     " << gpcoords(j,20) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV7,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,21) << "     " << gpcoords(j,22) << "     " << gpcoords(j,23) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << E01(0,0) << "     " << E01(1,1) << "     " << E01(2,2) << "     " << E01(0,1) << "     " << E01(0,2) << "     " << E01(1,2) << "\n";
+//         }
+//         // Outputting stress field
+//         outputFile << "\n" << "x          y          z          Sxx           Syy            Szz             Sxy           Sxz          Syz" << "\n";
+//         for (int j = 0; j < NEL; j++) {
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV0,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,0) << "     " << gpcoords(j,1) << "     " << gpcoords(j,2) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV1,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,3) << "     " << gpcoords(j,4) << "     " << gpcoords(j,5) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV2,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,6) << "     " << gpcoords(j,7) << "     " << gpcoords(j,8) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV3,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,9) << "     " << gpcoords(j,10) << "     " << gpcoords(j,11) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV4,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,12) << "     " << gpcoords(j,13) << "     " << gpcoords(j,14) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV5,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,15) << "     " << gpcoords(j,16) << "     " << gpcoords(j,17) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV6,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,18) << "     " << gpcoords(j,19) << "     " << gpcoords(j,20) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//             postprocess(elcoords,uel,j,NODES,CONN,ut,us,dpsig,gradu,detJ,gpV7,S01,E01,CMat);
+//             outputFile << std::setprecision(4) << std::fixed << gpcoords(j,21) << "     " << gpcoords(j,22) << "     " << gpcoords(j,23) << "     ";
+//             outputFile << std::setprecision(3) << std::scientific << S01(0) << "     " << S01(1) << "     " << S01(2) << "     " << S01(5) << "     " << S01(4) << "     " << S01(3) << "\n";
+//         }
+//     }
+// }

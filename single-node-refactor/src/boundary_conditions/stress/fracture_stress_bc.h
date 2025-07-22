@@ -32,8 +32,8 @@ OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **********************************************************************************************/
 
-#ifndef BOUNDARY_GLOBAL_FRACTURE_H
-#define BOUNDARY_GLOBAL_FRACTURE_H
+#ifndef BOUNDARY_STRESS_FRACTURE_H
+#define BOUNDARY_STRESS_FRACTURE_H
 
 #include "boundary_conditions.h"
 
@@ -55,7 +55,7 @@ struct BoundaryConditionEnums_t;
 /// \param Boundary set local id
 ///
 /////////////////////////////////////////////////////////////////////////////
-namespace GlobalFractureBC
+namespace FractureStressBC
 {
 // add an enum for boundary statevars and global vars
 

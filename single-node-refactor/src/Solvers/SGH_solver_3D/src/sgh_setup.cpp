@@ -110,9 +110,33 @@ void SGH3D::setup(SimulationParameters_t& SimulationParamaters,
                    State.node.mass,
                    State.corner.mass);
 
+// setting up fracture
+    for (size_t i = 0; i < mesh.num_bdy_sets; i++) {
+        // if fracture is allowed, then set up the fracture bank
+        // note, allow_fracture is set in the parse_bdy_conds_inputs.cpp file and boundary_conditions.h file
+        // checking if fracture is allowed... if = 0 then fracture is not enabled; if = 1, then fracture is enabled:
+        std::cout << "Boundary.allow_fracture = " << Boundary.allow_fracture << std::endl;
+        if (Boundary.allow_fracture) {
+        std::cout << "Setting up global fracture (cohesive zones)" << std::endl;
+        //doing_fracture = true;
+        
+        // test to see if function is being entered
+        std::cout << "Calling initialize()..." << std::endl;
+        cohesive_zones_t cohesive_zones_bank;
+        cohesive_zones_bank.initialize(mesh, State);
+        // to see if function is being entered
+        std::cout << "Done calling initialize()..." << std::endl;
+        // Example from Gavin's code for running fracture tests:
+        // run_fracture_tests(cohesive_zones_bank, mesh, State, sim_param);
+
+        break; 
+        }
+    }
+    // end setting up fracture
 
 
-    // the following code counts the number of boundary nodes and checks for node overlaps (2 nodes with the same coordinates)
+// ********************************************************** notes ************** ignore for now ******************* will clean up later *************************************************************
+/*     // the following code counts the number of boundary nodes and checks for node overlaps (2 nodes with the same coordinates)
     // this is the beginning step to setting up cohesive zones for fracture
                    
     // counting the number of boundary nodes
@@ -162,8 +186,9 @@ void SGH3D::setup(SimulationParameters_t& SimulationParamaters,
         }
         std::cout << std::endl;
     }   
-
-    // notes **************************************************************************************************************
+ */
+// ********************************************************** notes ************** ignore for now ******************* will clean up later *************************************************************
+// ********************************************************** notes ************** ignore for now ******************* will clean up later *************************************************************
     // below is where fracture will be set up
     // if fracture is allowed, then set up the fracture bank
     // this will be a function inside of the fracture code and will have to be called in the SGH setup function
@@ -214,7 +239,7 @@ void SGH3D::setup(SimulationParameters_t& SimulationParamaters,
         }
     }
     }  */
-    // notes **************************************************************************************************************
+    // ********************************************************** notes ************** ignore for now ******************* will clean up later *************************************************************
 } // end SGH setup    
 
  

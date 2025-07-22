@@ -142,9 +142,9 @@ class SGH3D : public Solver
 {
 public:
 
- //   fracture_patches_t fracture_bank // keeps track of all fracture patches
- //   bool doing_fracture = false; // a flag to turn on/off fracture; also condition used in SGH::execute
-    
+    // cohesive zones bank
+    cohesive_zones_t cohesive_zones_bank; // keeps track of all cohesive zones
+    bool doing_fracture = false; // condition used in SGH::execute
 
     SGH3D()  : Solver()
     {

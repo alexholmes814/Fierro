@@ -57,12 +57,27 @@ void SGH3D::update_velocity(double rk_alpha,
     const DCArrayKokkos<double>& node_mass,
     const DCArrayKokkos<double>& node_force,
     const DCArrayKokkos<double>& corner_force) const
+// cont CArrayKokkos<fracture_nodes_t>& fracture_nodes const
 {
     const size_t num_dims = mesh.num_dims;
 
     // walk over the nodes to update the velocity
     FOR_ALL(node_gid, 0, mesh.num_nodes, {
-
+/* 
+        // dont mess with this section until ready to work with the vcz update function
+        // adding in fracture force
+        if (doing_fracture) {
+            // loop over all fracture nodes and add the force to the node force
+            const fracture_nodes_t &fracture_nodes = fracture_nodes(node_gid);
+            for (size_t fracture_node_lid = 0; fracture_node_lid < fracture_nodes.size(); fracture_node_lid++) {
+                if (fracture_nodes[fracture_node_lid].gid == node_gid) {
+                    for (size_t dim = 0; dim < num_dims; dim++) {
+                        node_force(node_gid, dim) += fracture_nodes[fracture_node_lid].fracture_force(dim);
+                    } // end for dim
+                } // end if
+            } // end for fracture_node_lid
+        } // end if doing_fracture
+ */
         // loop over all corners around the node and calculate the nodal force
         for (size_t corner_lid = 0; corner_lid < mesh.num_corners_in_node(node_gid); corner_lid++) {
             // Get corner gid
